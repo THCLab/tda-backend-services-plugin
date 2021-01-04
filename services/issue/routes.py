@@ -153,9 +153,7 @@ async def apply(request: web.BaseRequest):
 
     await consent_given_record.save(context)
 
-    return web.json_response(
-        {"success": "application_sent", "exchange_id": record.exchange_id}
-    )
+    return web.json_response({"success": True, "exchange_id": record.exchange_id})
 
 
 async def send_confirmation(outbound_handler, connection_id, exchange_id, state):

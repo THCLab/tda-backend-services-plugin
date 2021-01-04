@@ -140,7 +140,7 @@ async def DEBUGrequest_services_list(request: web.BaseRequest):
                         context, connection_id
                     )
                 )
-                return web.json_response(query.serialize())
+                return web.json_response({"success": True, "result": query.serialize()})
             except StorageNotFoundError:
                 if i >= max_retries:
                     raise web.HTTPRequestTimeout
