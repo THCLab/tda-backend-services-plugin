@@ -6,8 +6,7 @@ import json
 
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.storage.error import StorageError
-from ..models import OcaSchema
-from .models.defined_consent import DefinedConsentRecord
+from .models.defined_consent import *
 from .models.given_consent import ConsentGivenRecord
 from ..models import ConsentSchema
 
@@ -16,8 +15,9 @@ CONSENTS_TABLE = "consents"
 
 class AddConsentSchema(Schema):
     label = fields.Str(required=True)
-    oca_schema = fields.Nested(OcaSchema())
-    payload = fields.Dict(required=True)
+    oca_data = fields.Dict(required=True)
+    oca_schema_dri = fields.Str(required=True)
+    oca_schema_namespace = fields.Str(required=True)
 
 
 @request_schema(AddConsentSchema())
@@ -41,7 +41,7 @@ async def add_consent(request: web.BaseRequest):
         return web.json_response({"success": False, "errors": errors})
     else:
         metadata = {
-            "oca_schema_dri": params["oca_schema"]["dri"],
+            "oca_schema_dri": params["oca_schema_dri"],
             "table": CONSENTS_TABLE,
         }
 
@@ -49,31 +49,20 @@ async def add_consent(request: web.BaseRequest):
         If pds supports usage policy then pack it into consent
         """
 
-        schema = {}
-        consent_user_data = params["payload"]
-        pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
-        if pds_usage_policy is not None:
-            consent_user_data["usage_policy"] = pds_usage_policy
-            schema["usage_policy"] = pds_usage_policy
-
-        payload_dri = await save_string(
-            context, json.dumps(consent_user_data), json.dumps(metadata)
+        oca_data_dri = await save_string(
+            context, json.dumps(params["oca_data"]), json.dumps(metadata)
         )
 
         defined_consent = DefinedConsentRecord(
             label=params["label"],
-            oca_schema=params["oca_schema"],
-            payload_dri=payload_dri,
-            usage_policy=pds_usage_policy,
+            oca_schema_dri=params["oca_schema_dri"],
+            oca_schema_namespace=params["oca_schema_namespace"],
+            oca_data_dri=oca_data_dri,
         )
 
         consent_id = await defined_consent.save(context)
 
-        schema["oca_schema_dri"] = params["oca_schema"]["dri"]
-        schema["oca_schema_namespace"] = params["oca_schema"]["namespace"]
-        schema["data_dri"] = payload_dri
-
-        return web.json_response({"success": True, "schema": schema})
+        return web.json_response({"success": True, "consent_id": consent_id})
 
 
 @docs(tags=["Defined Consents"], summary="Get all consent definitions")
@@ -87,12 +76,11 @@ async def get_consents(request: web.BaseRequest):
 
     result = list(map(lambda el: el.record_value, all_consents))
     for consent in result:
-        payload = await load_string(context, consent["payload_dri"])
-        print("PAYLOAD: ", payload)
-        if payload:
-            consent["payload"] = json.loads(payload)
+        oca_data = await load_string(context, consent["oca_data_dri"])
+        if oca_data:
+            consent["oca_data"] = json.loads(oca_data)
         else:
-            consent["payload"] = None
+            consent["oca_data"] = None
 
     return web.json_response({"success": True, "result": result})
 

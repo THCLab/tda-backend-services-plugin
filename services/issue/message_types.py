@@ -58,16 +58,3 @@ Confirmation, ConfirmationSchema = generate_model_schema(
         "state": fields.Str(required=True),
     },
 )
-
-GetIssueResponse, GetIssueResponseSchema = generate_model_schema(
-    name="GetIssueResponse",
-    handler=f"{PROTOCOL_PACKAGE}.GetIssueResponseHandler",
-    msg_type=GET_ISSUE_RESPONSE,
-    schema={
-        "label": fields.Str(required=False),
-        "payload": fields.Str(required=False),
-        "consent_schema": fields.Str(required=False),
-        "service_schema": fields.Str(required=False),
-        "exchange_id": fields.Str(required=False),
-    },
-)

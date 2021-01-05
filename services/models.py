@@ -9,6 +9,10 @@ from marshmallow import fields, Schema
 from typing import Mapping, Any
 import uuid
 import json
+from .consents.models.defined_consent import DefinedConsentRecord
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 
 class ConsentContentSchema(Schema):
@@ -22,18 +26,18 @@ class ConsentSchema(Schema):
     # dri - decentralized resource identifier
     oca_schema_dri = fields.Str(required=False)
     oca_schema_namespace = fields.Str(required=False)
-    data_dri = fields.Str(required=False)
-    usage_policy = fields.Str(required=False)
+    oca_data_dri = fields.Str(required=False)
+    oca_data = fields.Dict()
 
 
 class ServiceSchema(Schema):
-    oca_schema_dri = fields.Str(required=False)
-    oca_schema_namespace = fields.Str(required=False)
+    oca_schema_dri = fields.Str(required=True)
+    oca_schema_namespace = fields.Str(required=True)
 
 
 class OcaSchema(Schema):
-    namespace = fields.Str(required=False)
-    dri = fields.Str(required=False)
+    oca_schema_dri = fields.Str(required=False)
+    oca_schema_namespace = fields.Str(required=False)
 
 
 class ServiceRecord(BaseRecord):
@@ -48,14 +52,14 @@ class ServiceRecord(BaseRecord):
         *,
         label: str = None,
         service_schema: ServiceSchema = None,
-        consent_schema: ConsentSchema = None,
+        consent_id: str = None,
         state: str = None,
         record_id: str = None,
         **keyword_args,
     ):
         super().__init__(record_id, state, **keyword_args)
-        self.consent_schema = consent_schema
         self.service_schema = service_schema
+        self.consent_id = consent_id
         self.label = label
 
     @property
@@ -65,7 +69,7 @@ class ServiceRecord(BaseRecord):
             prop: getattr(self, prop)
             for prop in (
                 "service_schema",
-                "consent_schema",
+                "consent_id",
                 "label",
             )
         }
@@ -73,6 +77,59 @@ class ServiceRecord(BaseRecord):
     @property
     def record_tags(self) -> dict:
         return {"label": self.label}
+
+    @classmethod
+    async def query_fully_serialized(
+        cls, context, tag_filter=None, positive_filter=None, negative_filter=None
+    ):
+        query = await cls.query(
+            context,
+            tag_filter=tag_filter,
+            post_filter_positive=positive_filter,
+            post_filter_negative=negative_filter,
+        )
+
+        result = []
+        for current in query:
+            record = current.serialize()
+            consent = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
+                context, record["consent_id"]
+            )
+            record["consent_schema"] = consent
+            record["service_id"] = current._id
+
+            result.append(record)
+
+        return result
+
+    @classmethod
+    async def retrieve_by_id_fully_serialized(cls, context, id):
+        record = await cls.retrieve_by_id(context, id)
+        consent = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
+            context, record.consent_id
+        )
+
+        record = record.serialize()
+        record["consent_schema"] = consent
+        record.pop("created_at", None)
+        record.pop("updated_at", None)
+
+        return record
+
+    @classmethod
+    async def routes_retrieve_by_id_fully_serialized(cls, context, id):
+        try:
+            record = await cls.retrieve_by_id_fully_serialized(context, id)
+        except PersonalDataStorageNotFoundError as err:
+            raise web.HTTPNotFound(reason=err)
+        except StorageNotFoundError as err:
+            raise web.HTTPNotFound(reason=err)
+        except PersonalDataStorageError as err:
+            raise web.HTTPInternalServerError(reason=err)
+        except StorageError as err:
+            raise web.HTTPInternalServerError(reason=err)
+
+        return record
 
 
 class ServiceRecordSchema(BaseRecordSchema):
@@ -82,4 +139,4 @@ class ServiceRecordSchema(BaseRecordSchema):
     label = fields.Str(required=True)
     service_id = fields.Str(required=True)
     service_schema = fields.Nested(ServiceSchema())
-    consent_schema = fields.Nested(ConsentSchema())
+    consent_id = fields.Str(required=True)

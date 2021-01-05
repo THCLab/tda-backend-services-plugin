@@ -49,11 +49,11 @@ class ServiceIssueRecord(BaseRecord):
         # Holder / (cred requester) values
         label: str = None,
         credential_definition_id: str = None,
-        consent_schema: ConsentSchema = None,
+        service_consent_schema: ConsentSchema = None,
         service_schema: ServiceSchema = None,
         service_user_data_dri: str = None,
         service_consent_match_id: str = None,
-        consent_credential: dict = None,
+        user_consent_credential: dict = None,
         credential_id: str = None,
         their_public_did: str = None,
         #
@@ -68,12 +68,12 @@ class ServiceIssueRecord(BaseRecord):
         self.exchange_id = str(uuid.uuid4()) if exchange_id is None else exchange_id
         # Holder / (cred requester) values
         self.label = label
-        self.consent_schema = consent_schema
+        self.service_consent_schema = service_consent_schema
         self.service_schema = service_schema
         self.credential_definition_id = credential_definition_id
         self.service_user_data_dri = service_user_data_dri
         self.service_consent_match_id = service_consent_match_id
-        self.consent_credential = consent_credential
+        self.user_consent_credential = user_consent_credential
         self.credential_id = credential_id
         self.their_public_did = their_public_did
 
@@ -89,12 +89,12 @@ class ServiceIssueRecord(BaseRecord):
                 "exchange_id",
                 "service_id",
                 "label",
-                "consent_schema",
+                "service_consent_schema",
                 "service_schema",
                 "credential_definition_id",
                 "service_user_data_dri",
                 "service_consent_match_id",
-                "consent_credential",
+                "user_consent_credential",
                 "credential_id",
                 "their_public_did",
             )
@@ -200,7 +200,7 @@ class ServiceIssueRecordSchema(BaseRecordSchema):
     label = fields.Str(required=False)
     service_id = fields.Str(required=False)
     service_consent_match_id = fields.Str(required=False)
-    consent_credential = fields.Str(required=False)
+    user_consent_credential = fields.Str(required=False)
     credential_id = fields.Str(required=False)
     service_user_data_dri = fields.Str(required=False)
     their_public_did = fields.Str(required=False)

@@ -42,7 +42,7 @@ class DiscoveryResponse(AgentMessage):
         message_type = DISCOVERY_RESPONSE
         schema_class = "DiscoveryResponseSchema"
 
-    def __init__(self, *, services: DiscoveryServiceSchema = None, **kwargs):
+    def __init__(self, *, services=None, **kwargs):
         super(DiscoveryResponse, self).__init__(**kwargs)
         self.services = services
 
@@ -77,7 +77,7 @@ class DEBUGDiscoveryResponse(AgentMessage):
         message_type = DEBUGDISCOVERY_RESPONSE
         schema_class = "DEBUGDiscoveryResponseSchema"
 
-    def __init__(self, *, services: DiscoveryServiceSchema = None, **kwargs):
+    def __init__(self, *, services=None, **kwargs):
         super(DEBUGDiscoveryResponse, self).__init__(**kwargs)
         self.services = services
 
@@ -89,6 +89,6 @@ class DEBUGDiscoveryResponseSchema(AgentMessageSchema):
         model_class = DEBUGDiscoveryResponse
 
     services = fields.List(
-        fields.Nested(DiscoveryServiceSchema()),
+        fields.Dict(),
         required=True,
     )
