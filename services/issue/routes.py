@@ -105,7 +105,6 @@ async def apply(request: web.BaseRequest):
         context, service_user_data, json.dumps(metadata)
     )
 
-    print("service_consent_schema: ", service_consent_schema)
     record = ServiceIssueRecord(
         connection_id=connection_id,
         state=ServiceIssueRecord.ISSUE_WAITING_FOR_RESPONSE,
@@ -209,7 +208,13 @@ async def process_application(request: web.BaseRequest):
         await send_confirmation(
             outbound_handler, connection_id, exchange_id, issue.state
         )
-        return web.json_response(issue.serialize())
+        return web.json_response(
+            {
+                "success": True,
+                "issue_id": issue._id,
+                "connection_id": connection_id,
+            }
+        )
 
     """
 
@@ -238,6 +243,7 @@ async def process_application(request: web.BaseRequest):
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(
         {
+            "success": True,
             "issue_id": issue._id,
             "connection_id": connection_id,
         }
@@ -322,7 +328,7 @@ async def get_issue_self(request: web.BaseRequest):
         record = await serialize_and_verify_service_issue(context, i)
         result.append(record)
 
-    return web.json_response(result)
+    return web.json_response({"success": True, "result": result})
 
 
 class GetIssueByIdSchema(Schema):
@@ -347,7 +353,7 @@ async def get_issue_by_id(request: web.BaseRequest):
 
     record = await serialize_and_verify_service_issue(context, query)
 
-    return web.json_response(record)
+    return web.json_response({"success": True, "result": record})
 
 
 async def DEBUGapply_status(request: web.BaseRequest):
@@ -358,7 +364,7 @@ async def DEBUGapply_status(request: web.BaseRequest):
 
     query = [i.serialize() for i in query]
 
-    return web.json_response(query)
+    return web.json_response({"success": True, "result": query})
 
 
 async def DEBUGget_credential_data(request: web.BaseRequest):
@@ -369,4 +375,4 @@ async def DEBUGget_credential_data(request: web.BaseRequest):
         context, data_dri
     )
 
-    return web.json_response({"credential_data": query.payload})
+    return web.json_response({"success": True, "credential_data": query.payload})
