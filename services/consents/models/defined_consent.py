@@ -28,6 +28,7 @@ class DefinedConsentRecord(BaseRecord):
         **keyword_args,
     ):
         super().__init__(record_id, state, **keyword_args)
+        self.consent_id = record_id
         self.label = label
         self.oca_data_dri = oca_data_dri
         self.oca_schema_namespace = oca_schema_namespace
@@ -39,6 +40,7 @@ class DefinedConsentRecord(BaseRecord):
         return {
             prop: getattr(self, prop)
             for prop in (
+                "consent_id",
                 "label",
                 "oca_schema_namespace",
                 "oca_schema_dri",
@@ -99,6 +101,7 @@ class DefinedConsentRecordSchema(BaseRecordSchema):
     class Meta:
         model_class = "DefinedConsentRecord"
 
+    consent_id = fields.Str(required=False)
     label = fields.Str(required=True)
     oca_data_dri = fields.Str(required=True)
     oca_schema_namespace = fields.Str(required=True)
