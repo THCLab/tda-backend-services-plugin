@@ -92,16 +92,14 @@ async def apply(request: web.BaseRequest):
     credential_values.update(service_consent_copy)
 
     credential = await create_credential(
-        context,
-        {"credential_values": credential_values},
-        exception=web.HTTPError,
+        context, {"credential_values": credential_values}, exception=web.HTTPError,
     )
 
     metadata = {
         "oca_schema_dri": service_schema["oca_schema_dri"],
         "table": MY_SERVICE_DATA_TABLE,
     }
-    service_user_data_dri = await save_string(
+    service_user_data_dri = await pds_save(
         context, service_user_data, json.dumps(metadata)
     )
 
@@ -148,8 +146,7 @@ async def apply(request: web.BaseRequest):
     """
 
     consent_given_record = ConsentGivenRecord(
-        connection_id=connection_id,
-        credential=credential,
+        connection_id=connection_id, credential=credential,
     )
 
     await consent_given_record.save(context)
@@ -209,11 +206,7 @@ async def process_application(request: web.BaseRequest):
             outbound_handler, connection_id, exchange_id, issue.state
         )
         return web.json_response(
-            {
-                "success": True,
-                "issue_id": issue._id,
-                "connection_id": connection_id,
-            }
+            {"success": True, "issue_id": issue._id, "connection_id": connection_id,}
         )
 
     """
@@ -242,11 +235,7 @@ async def process_application(request: web.BaseRequest):
     resp = ApplicationResponse(credential=credential, exchange_id=exchange_id)
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(
-        {
-            "success": True,
-            "issue_id": issue._id,
-            "connection_id": connection_id,
-        }
+        {"success": True, "issue_id": issue._id, "connection_id": connection_id,}
     )
 
 
@@ -279,7 +268,7 @@ async def serialize_and_verify_service_issue(context, issue):
                 consent_data["usage_policy"],
             )
 
-    service_user_data = await load_string(context, issue.service_user_data_dri)
+    service_user_data = await pds_load(context, issue.service_user_data_dri)
     record.update(
         {
             "issue_id": issue._id,
@@ -336,8 +325,7 @@ class GetIssueByIdSchema(Schema):
 
 
 @docs(
-    tags=["Verifiable Services"],
-    summary="Search for issue by id",
+    tags=["Verifiable Services"], summary="Search for issue by id",
 )
 @match_info_schema(GetIssueByIdSchema())
 async def get_issue_by_id(request: web.BaseRequest):

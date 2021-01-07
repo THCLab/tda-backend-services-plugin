@@ -57,7 +57,7 @@ class DefinedConsentRecord(BaseRecord):
     @classmethod
     async def retrieve_by_id_fully_serialized(cls, context, id):
         record = await cls.retrieve_by_id(context, id)
-        oca_data = await load_string(context, record.oca_data_dri)
+        oca_data = await pds_load(context, record.oca_data_dri)
 
         record = record.serialize()
         record["oca_data"] = json.loads(oca_data)

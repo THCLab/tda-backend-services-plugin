@@ -8,9 +8,7 @@ from aries_cloudagent.messaging.base_handler import (
 from aries_cloudagent.wallet.base import BaseWallet
 from aries_cloudagent.verifier.base import BaseVerifier
 from aries_cloudagent.holder.base import HolderError, BaseHolder
-from aries_cloudagent.aathcf.credentials import (
-    verify_proof,
-)
+from aries_cloudagent.aathcf.credentials import verify_proof
 
 # Exceptions
 from aries_cloudagent.storage.error import StorageDuplicateError, StorageNotFoundError
@@ -47,10 +45,7 @@ async def send_confirmation(context, responder, exchange_id, state=None):
     """
 
     LOGGER.info("send confirmation %s", state)
-    confirmation = Confirmation(
-        exchange_id=exchange_id,
-        state=state,
-    )
+    confirmation = Confirmation(exchange_id=exchange_id, state=state,)
 
     confirmation.assign_thread_from(context.message)
     await responder.send_reply(confirmation)
@@ -150,7 +145,7 @@ class ApplicationHandler(BaseHandler):
         """
 
         metadata = {"oca_schema_dri": oca_dri, "table": SERVICE_USER_DATA_TABLE}
-        user_data_dri = await save_string(
+        user_data_dri = await pds_save(
             context, context.message.service_user_data, json.dumps(metadata)
         )
         assert user_data_dri == context.message.service_user_data_dri
@@ -181,10 +176,7 @@ class ApplicationHandler(BaseHandler):
 
         await responder.send_webhook(
             "verifiable-services/incoming-pending-application",
-            {
-                "issue": issue.serialize(),
-                "issue_id": issue_id,
-            },
+            {"issue": issue.serialize(), "issue_id": issue_id,},
         )
 
 
@@ -260,10 +252,7 @@ class ApplicationResponseHandler(BaseHandler):
 
         await responder.send_webhook(
             "verifiable-services/credential-received",
-            {
-                "credential_id": credential_id,
-                "connection_id": responder.connection_id,
-            },
+            {"credential_id": credential_id, "connection_id": responder.connection_id,},
         )
 
 
