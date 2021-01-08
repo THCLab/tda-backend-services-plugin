@@ -40,17 +40,15 @@ async def add_consent(request: web.BaseRequest):
     if errors:
         return web.json_response({"success": False, "errors": errors})
     else:
-        metadata = {
-            "oca_schema_dri": params["oca_schema_dri"],
-            "table": CONSENTS_TABLE,
-        }
-
         """
         If pds supports usage policy then pack it into consent
         """
 
-        oca_data_dri = await pds_save(
-            context, json.dumps(params["oca_data"]), json.dumps(metadata)
+        oca_data_dri = await pds_save_a(
+            context,
+            json.dumps(params["oca_data"]),
+            table=CONSENTS_TABLE,
+            oca_schema_dri=params["oca_schema_dri"],
         )
 
         defined_consent = DefinedConsentRecord(
@@ -78,7 +76,7 @@ async def get_consents(request: web.BaseRequest):
     for consent in result:
         oca_data = await pds_load(context, consent["oca_data_dri"])
         if oca_data:
-            consent["oca_data"] = json.loads(oca_data)
+            consent["oca_data"] = oca_data
         else:
             consent["oca_data"] = None
 

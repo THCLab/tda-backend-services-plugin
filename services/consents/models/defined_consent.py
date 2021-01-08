@@ -60,7 +60,7 @@ class DefinedConsentRecord(BaseRecord):
         oca_data = await pds_load(context, record.oca_data_dri)
 
         record = record.serialize()
-        record["oca_data"] = json.loads(oca_data)
+        record["oca_data"] = oca_data
         record.pop("created_at", None)
         record.pop("updated_at", None)
         record.pop("label", None)
@@ -71,11 +71,11 @@ class DefinedConsentRecord(BaseRecord):
     async def routes_retrieve_by_id_fully_serialized(cls, context, id):
         try:
             record = await cls.retrieve_by_id_fully_serialized(context, id)
-        except PersonalDataStorageNotFoundError as err:
+        except PDSRecordNotFoundError as err:
             raise web.HTTPNotFound(reason=err)
         except StorageNotFoundError as err:
             raise web.HTTPNotFound(reason=err)
-        except PersonalDataStorageError as err:
+        except PDSError as err:
             raise web.HTTPInternalServerError(reason=err)
         except StorageError as err:
             raise web.HTTPInternalServerError(reason=err)

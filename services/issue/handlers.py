@@ -144,9 +144,11 @@ class ApplicationHandler(BaseHandler):
 
         """
 
-        metadata = {"oca_schema_dri": oca_dri, "table": SERVICE_USER_DATA_TABLE}
-        user_data_dri = await pds_save(
-            context, context.message.service_user_data, json.dumps(metadata)
+        user_data_dri = await pds_save_a(
+            context,
+            context.message.service_user_data,
+            oca_schema_dri=oca_dri,
+            table=SERVICE_USER_DATA_TABLE,
         )
         assert user_data_dri == context.message.service_user_data_dri
 

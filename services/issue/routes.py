@@ -95,12 +95,12 @@ async def apply(request: web.BaseRequest):
         context, {"credential_values": credential_values}, exception=web.HTTPError,
     )
 
-    metadata = {
-        "oca_schema_dri": service_schema["oca_schema_dri"],
-        "table": MY_SERVICE_DATA_TABLE,
-    }
-    service_user_data_dri = await pds_save(
-        context, service_user_data, json.dumps(metadata)
+    metadata = {}
+    service_user_data_dri = await pds_save_a(
+        context,
+        service_user_data,
+        oca_schema_dri=service_schema["oca_schema_dri"],
+        table=MY_SERVICE_DATA_TABLE,
     )
 
     record = ServiceIssueRecord(
@@ -273,7 +273,7 @@ async def serialize_and_verify_service_issue(context, issue):
         {
             "issue_id": issue._id,
             "label": issue.label,
-            "service_user_data": service_user_data,
+            "service_user_data": json.dumps(service_user_data),
             "service_schema": json.dumps(issue.service_schema),
             "consent_schema": json.dumps(consent_data),
         }
