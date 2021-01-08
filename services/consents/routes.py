@@ -72,13 +72,18 @@ async def get_consents(request: web.BaseRequest):
     except StorageError as err:
         raise web.HTTPInternalServerError(reason=err)
 
-    result = list(map(lambda el: el.record_value, all_consents))
-    for consent in result:
-        oca_data = await pds_load(context, consent["oca_data_dri"])
+    result = []
+    for consent in all_consents:
+        current = consent.record_value
+        current["consent_id"] = consent.consent_id
+        oca_data = await pds_load(context, current["oca_data_dri"])
+
         if oca_data:
-            consent["oca_data"] = oca_data
+            current["oca_data"] = oca_data
         else:
-            consent["oca_data"] = None
+            current["oca_data"] = None
+
+        result.append(current)
 
     return web.json_response({"success": True, "result": result})
 
