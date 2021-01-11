@@ -93,10 +93,15 @@ class ServiceRecord(BaseRecord):
         result = []
         for current in query:
             record = current.serialize()
-            consent = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
-                context, record["consent_id"]
-            )
-            record["consent_schema"] = consent
+            try:
+                consent = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
+                    context, record["consent_id"]
+                )
+                record["consent_schema"] = consent
+            except StorageError as err:
+                LOGGER.warn("%s", err)
+                record["consent_schema"] = "Consent not found when serializing service"
+
             record["service_id"] = current._id
 
             result.append(record)

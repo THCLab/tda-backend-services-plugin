@@ -250,25 +250,40 @@ class GetIssueFilteredSchema(Schema):
 
 async def serialize_and_verify_service_issue(context, issue):
     record: dict = issue.serialize()
+    if issue.author == issue.AUTHOR_SELF:
+        return record
 
     """
     Serialize additional fields which are not serializable
     by default (information that is in PDS)
     """
 
-    service = await ServiceRecord.retrieve_by_id_fully_serialized(
-        context, issue.service_id
-    )
-    consent_data = service["consent_schema"]
-
-    if consent_data.get("usage_policy") is not None:
-        if issue.author == ServiceIssueRecord.AUTHOR_OTHER:
-            record["usage_policies_match"] = await verify_usage_policy(
-                issue.user_consent_credential["credentialSubject"]["usage_policy"],
-                consent_data["usage_policy"],
+    consent_data = None
+    if record["service_id"] is not None:
+        try:
+            service = await ServiceRecord.retrieve_by_id_fully_serialized(
+                context, record["service_id"]
+            )
+        except StorageNotFoundError:
+            return "Record not found id:" + issue.service_id
+        except StorageError as err:
+            return (
+                f"Error when retrieving service: {err.roll_up} id: " + issue.service_id
             )
 
-    service_user_data = await pds_load(context, issue.service_user_data_dri)
+        consent_data = service["consent_schema"]
+
+        if consent_data.get("usage_policy") is not None:
+            if issue.author == ServiceIssueRecord.AUTHOR_OTHER:
+                record["usage_policies_match"] = await verify_usage_policy(
+                    issue.user_consent_credential["credentialSubject"]["usage_policy"],
+                    consent_data["usage_policy"],
+                )
+
+    service_user_data = None
+    if issue.service_user_data_dri is not None:
+        service_user_data = await pds_load(context, issue.service_user_data_dri)
+
     record.update(
         {
             "issue_id": issue._id,
@@ -314,7 +329,9 @@ async def get_issue_self(request: web.BaseRequest):
 
     result = []
     for i in query:
+
         record = await serialize_and_verify_service_issue(context, i)
+
         result.append(record)
 
     return web.json_response({"success": True, "result": result})
