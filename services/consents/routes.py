@@ -21,7 +21,19 @@ class AddConsentSchema(Schema):
 
 
 @request_schema(AddConsentSchema())
-@docs(tags=["Defined Consents"], summary="Add consent definition")
+@docs(
+    tags=["Defined Consents"],
+    summary="Add consent definition",
+    description="""
+    "oca_data": {
+            "expiration": "7200",
+            "limitation": "7200",
+            "dictatedBy": "test",
+            "validityTTL": "7200",
+            "usage_policy": subject_usage_policy
+        }
+""",
+)
 async def add_consent(request: web.BaseRequest):
     context = request.app["request_context"]
     params = await request.json()
@@ -40,10 +52,6 @@ async def add_consent(request: web.BaseRequest):
     if errors:
         return web.json_response({"success": False, "errors": errors})
     else:
-        """
-        If pds supports usage policy then pack it into consent
-        """
-
         oca_data_dri = await pds_save_a(
             context,
             json.dumps(params["oca_data"]),
@@ -51,11 +59,13 @@ async def add_consent(request: web.BaseRequest):
             oca_schema_dri=params["oca_schema_dri"],
         )
 
+        pds_name = await pds_get_active_name(context)
         defined_consent = DefinedConsentRecord(
             label=params["label"],
             oca_schema_dri=params["oca_schema_dri"],
             oca_schema_namespace=params["oca_schema_namespace"],
             oca_data_dri=oca_data_dri,
+            pds_name=str(pds_name),
         )
 
         consent_id = await defined_consent.save(context)
@@ -68,13 +78,16 @@ async def get_consents(request: web.BaseRequest):
     context = request.app["request_context"]
 
     try:
-        all_consents = await DefinedConsentRecord.query(context, {})
+        pds_name = await pds_get_active_name(context)
+        all_consents = await DefinedConsentRecord.query(
+            context, {"pds_name": str(pds_name)}
+        )
     except StorageError as err:
         raise web.HTTPInternalServerError(reason=err)
 
     result = []
     for consent in all_consents:
-        current = consent.record_value
+        current = consent.serialize()
         current["consent_id"] = consent.consent_id
         oca_data = await pds_load(context, current["oca_data_dri"])
 

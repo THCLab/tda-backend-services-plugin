@@ -23,6 +23,7 @@ class DefinedConsentRecord(BaseRecord):
         oca_schema_dri: str = None,
         oca_schema_namespace: str = None,
         oca_data_dri: str = None,
+        pds_name: str = None,
         state: str = None,
         record_id: str = None,
         **keyword_args,
@@ -32,6 +33,7 @@ class DefinedConsentRecord(BaseRecord):
         self.oca_data_dri = oca_data_dri
         self.oca_schema_namespace = oca_schema_namespace
         self.oca_schema_dri = oca_schema_dri
+        self.pds_name = pds_name
 
     @property
     def record_value(self) -> dict:
@@ -43,12 +45,17 @@ class DefinedConsentRecord(BaseRecord):
                 "oca_schema_namespace",
                 "oca_schema_dri",
                 "oca_data_dri",
+                "pds_name",
             )
         }
 
     @property
     def record_tags(self) -> dict:
-        return {"label": self.label, "oca_data_dri": self.oca_data_dri}
+        return {
+            "label": self.label,
+            "oca_data_dri": self.oca_data_dri,
+            "pds_name": self.pds_name,
+        }
 
     @property
     def consent_id(self):

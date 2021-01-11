@@ -1,7 +1,11 @@
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
 from aries_cloudagent.storage.base import BaseStorage
 from aries_cloudagent.config.injection_context import InjectionContext
-from aries_cloudagent.storage.error import StorageDuplicateError
+from aries_cloudagent.storage.error import (
+    StorageDuplicateError,
+    StorageError,
+    StorageNotFoundError,
+)
 from aries_cloudagent.messaging.util import datetime_to_str, time_now
 
 import hashlib
@@ -11,6 +15,7 @@ import uuid
 import json
 from .consents.models.defined_consent import DefinedConsentRecord
 import logging
+from aiohttp import web
 
 LOGGER = logging.getLogger(__name__)
 
@@ -67,11 +72,7 @@ class ServiceRecord(BaseRecord):
         """Accessor to for the JSON record value properties"""
         return {
             prop: getattr(self, prop)
-            for prop in (
-                "service_schema",
-                "consent_id",
-                "label",
-            )
+            for prop in ("service_schema", "consent_id", "label",)
         }
 
     @property
@@ -120,11 +121,11 @@ class ServiceRecord(BaseRecord):
     async def routes_retrieve_by_id_fully_serialized(cls, context, id):
         try:
             record = await cls.retrieve_by_id_fully_serialized(context, id)
-        except PersonalDataStorageNotFoundError as err:
+        except PDSRecordNotFoundError as err:
             raise web.HTTPNotFound(reason=err)
         except StorageNotFoundError as err:
             raise web.HTTPNotFound(reason=err)
-        except PersonalDataStorageError as err:
+        except PDSError as err:
             raise web.HTTPInternalServerError(reason=err)
         except StorageError as err:
             raise web.HTTPInternalServerError(reason=err)

@@ -42,9 +42,10 @@ class DiscoveryResponse(AgentMessage):
         message_type = DISCOVERY_RESPONSE
         schema_class = "DiscoveryResponseSchema"
 
-    def __init__(self, *, services=None, **kwargs):
+    def __init__(self, *, services=None, usage_policy=None, **kwargs):
         super(DiscoveryResponse, self).__init__(**kwargs)
         self.services = services
+        self.usage_policy = usage_policy
 
 
 class DiscoveryResponseSchema(AgentMessageSchema):
@@ -53,10 +54,8 @@ class DiscoveryResponseSchema(AgentMessageSchema):
     class Meta:
         model_class = DiscoveryResponse
 
-    services = fields.List(
-        fields.Dict(),
-        required=True,
-    )
+    services = fields.List(fields.Dict(), required=True)
+    usage_policy = fields.Str(required=False)
 
 
 """
@@ -77,9 +76,10 @@ class DEBUGDiscoveryResponse(AgentMessage):
         message_type = DEBUGDISCOVERY_RESPONSE
         schema_class = "DEBUGDiscoveryResponseSchema"
 
-    def __init__(self, *, services=None, **kwargs):
+    def __init__(self, *, services=None, usage_policy=None, **kwargs):
         super(DEBUGDiscoveryResponse, self).__init__(**kwargs)
         self.services = services
+        self.usage_policy = usage_policy
 
 
 class DEBUGDiscoveryResponseSchema(AgentMessageSchema):
@@ -88,7 +88,5 @@ class DEBUGDiscoveryResponseSchema(AgentMessageSchema):
     class Meta:
         model_class = DEBUGDiscoveryResponse
 
-    services = fields.List(
-        fields.Dict(),
-        required=True,
-    )
+    services = fields.List(fields.Dict(), required=True,)
+    usage_policy = fields.Str(required=False)
