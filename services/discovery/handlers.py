@@ -38,9 +38,8 @@ class DiscoveryHandler(BaseHandler):
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, Discovery)
 
-        usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
         records = await ServiceRecord().query_fully_serialized(context)
-        response = DiscoveryResponse(services=records, usage_policy=usage_policy)
+        response = DiscoveryResponse(services=records)
         response.assign_thread_from(context.message)
         await responder.send_reply(response)
 
@@ -58,7 +57,6 @@ class DiscoveryResponseHandler(BaseHandler):
         connection_id = context.connection_record.connection_id
 
         services = context.message.services
-        his_usage_policy = context.message.usage_policy
         trim_acapy_fields(services)
 
         await responder.send_webhook(
@@ -69,11 +67,11 @@ class DiscoveryResponseHandler(BaseHandler):
         # TODO: We only need to check usage_policy once !!!!!!!!
         # this is so that things dont break on frontend
         usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
-        if usage_policy and his_usage_policy:
+        if usage_policy:
             for i in services:
                 result = {}
                 result[i["service_id"]] = await verify_usage_policy(
-                    usage_policy, his_usage_policy
+                    usage_policy, i["consent_schema"]["usage_policy"]
                 )
                 await responder.send_webhook(
                     "verifiable-services/request-service-list/usage-policy", result,
