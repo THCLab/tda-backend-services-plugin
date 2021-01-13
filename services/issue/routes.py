@@ -95,7 +95,6 @@ async def apply(request: web.BaseRequest):
         context, {"credential_values": credential_values}, exception=web.HTTPError,
     )
 
-    metadata = {}
     service_user_data_dri = await pds_save_a(
         context,
         service_user_data,
@@ -230,8 +229,8 @@ async def process_application(request: web.BaseRequest):
     )
 
     issue.state = ServiceIssueRecord.ISSUE_ACCEPTED
+    await issue.issuer_credential_pds_set(context, credential)
     await issue.save(context, reason="Accepted service issue, credential offer created")
-
     resp = ApplicationResponse(credential=credential, exchange_id=exchange_id)
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(
@@ -272,11 +271,11 @@ async def serialize_and_verify_service_issue(context, issue):
             )
 
         consent_data = service["consent_schema"]
-
         if consent_data.get("usage_policy") is not None:
             if issue.author == ServiceIssueRecord.AUTHOR_OTHER:
+                cred = await issue.user_consent_credential_pds_get(context)
                 record["usage_policies_match"] = await verify_usage_policy(
-                    issue.user_consent_credential["credentialSubject"]["usage_policy"],
+                    cred["credentialSubject"]["usage_policy"],
                     consent_data["usage_policy"],
                 )
 

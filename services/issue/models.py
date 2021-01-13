@@ -9,8 +9,20 @@ from marshmallow import fields, Schema
 from typing import Mapping, Any
 import uuid
 import json
+from aries_cloudagent.pdstorage_thcf.api import *
 
 from ..models import ConsentSchema, ServiceSchema
+
+
+# def create_pds_setter(self, value_name):
+#     async def pds_setter(context, value):
+#         value = await pds_save_a(context, value)
+#         setattr(self, value_name, value)
+
+#     if value_name.endswith("_dri"):
+#         value_name = value_name[:-4]
+
+#     setattr(self, value_name + "_pds_set", pds_setter)
 
 
 class ServiceIssueRecord(BaseRecord):
@@ -53,7 +65,7 @@ class ServiceIssueRecord(BaseRecord):
         service_schema: ServiceSchema = None,
         service_user_data_dri: str = None,
         service_consent_match_id: str = None,
-        user_consent_credential: dict = None,
+        user_consent_credential_dri: dict = None,
         credential_id: str = None,
         their_public_did: str = None,
         #
@@ -73,9 +85,9 @@ class ServiceIssueRecord(BaseRecord):
         self.credential_definition_id = credential_definition_id
         self.service_user_data_dri = service_user_data_dri
         self.service_consent_match_id = service_consent_match_id
-        self.user_consent_credential = user_consent_credential
         self.credential_id = credential_id
         self.their_public_did = their_public_did
+        self.user_consent_credential_dri = user_consent_credential_dri
 
     @property
     def record_value(self) -> dict:
@@ -94,7 +106,7 @@ class ServiceIssueRecord(BaseRecord):
                 "credential_definition_id",
                 "service_user_data_dri",
                 "service_consent_match_id",
-                "user_consent_credential",
+                "user_consent_credential_dri",
                 "credential_id",
                 "their_public_did",
             )
@@ -103,13 +115,7 @@ class ServiceIssueRecord(BaseRecord):
     @property
     def unique_record_values(self) -> dict:
         """Hash id of a record is based on those values"""
-        return {
-            prop: getattr(self, prop)
-            for prop in (
-                "connection_id",
-                "exchange_id",
-            )
-        }
+        return {prop: getattr(self, prop) for prop in ("connection_id", "exchange_id",)}
 
     @property
     def record_tags(self) -> dict:
@@ -130,9 +136,26 @@ class ServiceIssueRecord(BaseRecord):
         cls, context: InjectionContext, exchange_id: str, connection_id: str
     ):
         return await cls.retrieve_by_tag_filter(
-            context,
-            {"exchange_id": exchange_id, "connection_id": connection_id},
+            context, {"exchange_id": exchange_id, "connection_id": connection_id},
         )
+
+    async def issuer_credential_pds_set(self, context, credential):
+        self.credential_id = await pds_save_a(context, credential)
+
+    async def issuer_credential_pds_get(self, context):
+        if self.credential_id is None:
+            return None
+        credential = await pds_load(context, self.credential_id)
+        return credential
+
+    async def user_consent_credential_pds_set(self, context, credential):
+        self.user_consent_credential_dri = await pds_save_a(context, credential)
+
+    async def user_consent_credential_pds_get(self, context):
+        if self.user_consent_credential_dri is None:
+            return None
+        credential = await pds_load(context, self.user_consent_credential_dri)
+        return credential
 
     async def save(
         self,
@@ -200,7 +223,7 @@ class ServiceIssueRecordSchema(BaseRecordSchema):
     label = fields.Str(required=False)
     service_id = fields.Str(required=False)
     service_consent_match_id = fields.Str(required=False)
-    user_consent_credential = fields.Str(required=False)
+    user_consent_credential_dri = fields.Str(required=False)
     credential_id = fields.Str(required=False)
     service_user_data_dri = fields.Str(required=False)
     their_public_did = fields.Str(required=False)

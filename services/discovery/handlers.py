@@ -15,7 +15,11 @@ from aries_cloudagent.connections.models.connection_record import ConnectionReco
 from aries_cloudagent.storage.record import StorageRecord
 
 # Exceptions
-from aries_cloudagent.storage.error import StorageDuplicateError, StorageNotFoundError
+from aries_cloudagent.storage.error import (
+    StorageDuplicateError,
+    StorageNotFoundError,
+    StorageError,
+)
 from aries_cloudagent.protocols.problem_report.v1_0.message import ProblemReport
 
 # Internal
@@ -39,7 +43,7 @@ class DiscoveryHandler(BaseHandler):
         debug_handler(self._logger.debug, context, Discovery)
 
         usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
-        records = await ServiceRecord().query_fully_serialized(context)
+        records = await ServiceRecord.query_fully_serialized(context)
         response = DiscoveryResponse(services=records, usage_policy=usage_policy)
         response.assign_thread_from(context.message)
         await responder.send_reply(response)
@@ -61,9 +65,26 @@ class DiscoveryResponseHandler(BaseHandler):
         his_usage_policy = context.message.usage_policy
         trim_acapy_fields(services)
 
+        storage: BaseStorage = await context.inject(BaseStorage)
+
+        services_serialized = json.dumps(services)
+        try:
+            query = storage.search_records(
+                "service_list", {"connection_id": connection_id}
+            )
+            query = await query.fetch_single()
+            await storage.update_record_value(query, services_serialized)
+            print("QUERY", query)
+        except StorageError:
+            record = StorageRecord(
+                "service_list", services_serialized, {"connection_id": connection_id}
+            )
+            await storage.add_record(record)
+            print("ADD RECORD ", record)
+
         await responder.send_webhook(
             "verifiable-services/request-service-list",
-            {"connection_id": connection_id, "services": services},
+            {"connection_id": connection_id, "services": services_serialized},
         )
 
         # TODO: We only need to check usage_policy once !!!!!!!!
@@ -112,8 +133,7 @@ class DEBUGServiceDiscoveryRecord(BaseRecord):
 
     @property
     def record_tags(self) -> dict:
-        """Get tags for record,
-        NOTE: relevent when filtering by tags"""
+        """Get tags for record"""
         return {
             "connection_id": self.connection_id,
         }

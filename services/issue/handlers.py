@@ -162,10 +162,11 @@ class ApplicationHandler(BaseHandler):
             service_user_data_dri=user_data_dri,
             service_schema=service["service_schema"],
             service_consent_schema=service["consent_schema"],
-            user_consent_credential=consent,
             label=service["label"],
             their_public_did=context.message.public_did,
         )
+
+        await issue.user_consent_credential_pds_set(context, consent)
 
         issue_id = await issue.save(context)
 
