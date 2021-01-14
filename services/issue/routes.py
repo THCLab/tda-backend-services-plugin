@@ -250,6 +250,21 @@ class GetIssueFilteredSchema(Schema):
 async def serialize_and_verify_service_issue(context, issue):
     record: dict = issue.serialize()
     if issue.author == issue.AUTHOR_SELF:
+        storage: BaseStorage = await context.inject(BaseStorage)
+        try:
+            query = storage.search_records(
+                "service_list", {"connection_id": record["connection_id"]}
+            )
+            query = await query.fetch_single()
+            services = json.loads(query.value)
+            for i in services:
+                if i["service_id"] == record["service_id"]:
+                    record["consent_schema"] = i["consent_schema"]
+                    record["service_schema"] = i["service_schema"]
+                    record["label"] = i["label"]
+        except StorageError:
+            pass
+
         return record
 
     """

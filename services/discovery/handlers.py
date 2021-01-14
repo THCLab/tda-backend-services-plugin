@@ -32,10 +32,13 @@ from marshmallow import fields, Schema
 import hashlib
 import uuid
 import json
+import logging
 
 from ..util import verify_usage_policy
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.aathcf.utils import debug_handler
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DiscoveryHandler(BaseHandler):
@@ -73,13 +76,13 @@ class DiscoveryResponseHandler(BaseHandler):
             )
             query = await query.fetch_single()
             await storage.update_record_value(query, services_serialized)
-            print("QUERY", query)
+            LOGGER.info("QUERY", query)
         except StorageError:
             record = StorageRecord(
                 "service_list", services_serialized, {"connection_id": connection_id}
             )
             await storage.add_record(record)
-            print("ADD RECORD ", record)
+            LOGGER.info("ADD RECORD ", record)
 
         await responder.send_webhook(
             "verifiable-services/request-service-list",
