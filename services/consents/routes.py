@@ -30,7 +30,6 @@ class AddConsentSchema(Schema):
             "limitation": "7200",
             "dictatedBy": "test",
             "validityTTL": "7200",
-            "usage_policy": subject_usage_policy
         }
 """,
 )
@@ -59,6 +58,8 @@ async def add_consent(request: web.BaseRequest):
             oca_schema_dri=params["oca_schema_dri"],
         )
 
+        pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
+
         pds_name = await pds_get_active_name(context)
         defined_consent = DefinedConsentRecord(
             label=params["label"],
@@ -66,6 +67,7 @@ async def add_consent(request: web.BaseRequest):
             oca_schema_namespace=params["oca_schema_namespace"],
             oca_data_dri=oca_data_dri,
             pds_name=str(pds_name),
+            usage_policy=pds_usage_policy,
         )
 
         consent_id = await defined_consent.save(context)

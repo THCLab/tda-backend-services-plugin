@@ -24,6 +24,7 @@ class DefinedConsentRecord(BaseRecord):
         oca_schema_namespace: str = None,
         oca_data_dri: str = None,
         pds_name: str = None,
+        usage_policy: str = None,
         state: str = None,
         record_id: str = None,
         **keyword_args,
@@ -34,6 +35,7 @@ class DefinedConsentRecord(BaseRecord):
         self.oca_schema_namespace = oca_schema_namespace
         self.oca_schema_dri = oca_schema_dri
         self.pds_name = pds_name
+        self.usage_policy = usage_policy
 
     @property
     def record_value(self) -> dict:
@@ -46,6 +48,7 @@ class DefinedConsentRecord(BaseRecord):
                 "oca_schema_dri",
                 "oca_data_dri",
                 "pds_name",
+                "usage_policy",
             )
         }
 
@@ -114,3 +117,4 @@ class DefinedConsentRecordSchema(BaseRecordSchema):
     oca_data_dri = fields.Str(required=True)
     oca_schema_namespace = fields.Str(required=True)
     oca_schema_dri = fields.Str(required=True)
+    usage_policy = fields.Str(required=True)
