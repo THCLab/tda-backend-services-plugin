@@ -76,13 +76,13 @@ class DiscoveryResponseHandler(BaseHandler):
             )
             query = await query.fetch_single()
             await storage.update_record_value(query, services_serialized)
-            LOGGER.info("QUERY", query)
+            LOGGER.info("QUERY %s", query)
         except StorageError:
             record = StorageRecord(
                 "service_list", services_serialized, {"connection_id": connection_id}
             )
             await storage.add_record(record)
-            LOGGER.info("ADD RECORD ", record)
+            LOGGER.info("ADD RECORD %s", record)
 
         await responder.send_webhook(
             "verifiable-services/request-service-list",

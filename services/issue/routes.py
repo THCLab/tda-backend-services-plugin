@@ -144,10 +144,8 @@ async def apply(request: web.BaseRequest):
 
     """
 
-    consent_given_record = ConsentGivenRecord(
-        connection_id=connection_id, credential=credential,
-    )
-
+    consent_given_record = ConsentGivenRecord(connection_id=connection_id)
+    await consent_given_record.credential_pds_set(context, credential)
     await consent_given_record.save(context)
 
     return web.json_response({"success": True, "exchange_id": record.exchange_id})

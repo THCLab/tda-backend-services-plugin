@@ -1,5 +1,5 @@
 from aiohttp import web
-from aiohttp_apispec import docs, request_schema
+from aiohttp_apispec import docs, request_schema, querystring_schema
 
 from marshmallow import fields, Schema
 import json
@@ -103,17 +103,27 @@ async def get_consents(request: web.BaseRequest):
     return web.json_response({"success": True, "result": result})
 
 
+class GetConsentsGivenQuerySchema(Schema):
+    connection_id = fields.Str(required=False)
+
+
 @docs(
     tags=["Defined Consents"],
     summary="Get all the consents I have given to other people",
 )
+@querystring_schema(GetConsentsGivenQuerySchema)
 async def get_consents_given(request: web.BaseRequest):
     context = request.app["request_context"]
 
     try:
-        all_consents = await ConsentGivenRecord.query(context)
+        all_consents = await ConsentGivenRecord.query(context, request.query)
     except StorageError as err:
         raise web.HTTPInternalServerError(reason=err)
-    serialized = [i.serialize() for i in all_consents]
 
-    return web.json_response({"success": True, "result": serialized})
+    result = []
+    for i in all_consents:
+        record = i.serialize()
+        record["credential"] = await i.credential_pds_get(context)
+        result.append(record)
+
+    return web.json_response({"success": True, "result": result})

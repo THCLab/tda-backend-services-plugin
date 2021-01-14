@@ -6,7 +6,7 @@ from ..consents.models.defined_consent import *
 
 from aiohttp import web
 from aiohttp import ClientSession
-from aiohttp_apispec import docs, request_schema
+from aiohttp_apispec import docs, request_schema, match_info_schema
 
 from marshmallow import fields, Schema
 import logging
@@ -84,8 +84,7 @@ async def request_services_list(request: web.BaseRequest):
 
 
 @docs(
-    tags=["Service Discovery"],
-    summary="Get a list of all services I registered",
+    tags=["Service Discovery"], summary="Get a list of all services I registered",
 )
 async def self_service_list(request: web.BaseRequest):
     context = request.app["request_context"]
@@ -94,6 +93,25 @@ async def self_service_list(request: web.BaseRequest):
         result = await ServiceRecord().query_fully_serialized(context)
     except StorageNotFoundError:
         raise web.HTTPNotFound
+
+    return web.json_response({"success": True, "result": result})
+
+
+class GetServiceSchema(Schema):
+    service_id = fields.Str(required=True)
+
+
+@docs(
+    tags=["Service Discovery"], summary="Get a service registered by ME",
+)
+@match_info_schema(GetServiceSchema)
+async def get_service(request: web.BaseRequest):
+    context = request.app["request_context"]
+    service_id = request.match_info["service_id"]
+
+    result = await ServiceRecord.routes_retrieve_by_id_fully_serialized(
+        context, service_id
+    )
 
     return web.json_response({"success": True, "result": result})
 
