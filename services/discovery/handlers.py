@@ -96,7 +96,7 @@ class DiscoveryResponseHandler(BaseHandler):
             for i in services:
                 result = {}
                 result[i["service_id"]] = await verify_usage_policy(
-                    usage_policy, i["consent_schema"]["usage_policy"]
+                    i["consent_schema"]["usage_policy"], usage_policy
                 )
                 await responder.send_webhook(
                     "verifiable-services/request-service-list/usage-policy", result,

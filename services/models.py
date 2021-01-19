@@ -100,8 +100,8 @@ class ServiceRecord(BaseRecord):
                 )
                 record["consent_schema"] = consent
             except StorageError as err:
-                LOGGER.warn("%s", err)
-                record["consent_schema"] = "Consent not found when serializing service"
+                LOGGER.warn("Consent not found when serializing service %s", err)
+                continue
 
             record["service_id"] = current._id
 

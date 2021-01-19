@@ -85,7 +85,7 @@ async def get_consents(request: web.BaseRequest):
             context, {"pds_name": str(pds_name)}
         )
     except StorageError as err:
-        raise web.HTTPInternalServerError(reason=err)
+        raise web.HTTPNotFound(reason=err)
 
     result = []
     for consent in all_consents:
