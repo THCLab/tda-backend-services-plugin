@@ -53,7 +53,7 @@ async def add_consent(request: web.BaseRequest):
     else:
         oca_data_dri = await pds_save_a(
             context,
-            json.dumps(params["oca_data"]),
+            params["oca_data"],
             table=CONSENTS_TABLE,
             oca_schema_dri=params["oca_schema_dri"],
         )
