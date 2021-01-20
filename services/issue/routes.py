@@ -263,48 +263,44 @@ async def serialize_and_verify_service_issue(context, issue):
         except StorageError:
             pass
 
-        return record
-
-    """
-    Serialize additional fields which are not serializable
-    by default (information that is in PDS)
-    """
-
-    consent_data = None
-    if record["service_id"] is not None:
-        try:
-            service = await ServiceRecord.retrieve_by_id_fully_serialized(
-                context, record["service_id"]
-            )
-        except StorageNotFoundError:
-            return "Record not found id:" + issue.service_id
-        except StorageError as err:
-            return (
-                f"Error when retrieving service: {err.roll_up} id: " + issue.service_id
-            )
-
-        consent_data = service["consent_schema"]
-        if consent_data.get("usage_policy") is not None:
-            if issue.author == ServiceIssueRecord.AUTHOR_OTHER:
-                cred = await issue.user_consent_credential_pds_get(context)
-                record["usage_policies_match"] = await verify_usage_policy(
-                    cred["credentialSubject"]["usage_policy"],
-                    consent_data["usage_policy"],
+    else:
+        consent_data = None
+        if record["service_id"] is not None:
+            try:
+                service = await ServiceRecord.retrieve_by_id_fully_serialized(
+                    context, record["service_id"]
+                )
+            except StorageNotFoundError:
+                return "Record not found id:" + issue.service_id
+            except StorageError as err:
+                return (
+                    f"Error when retrieving service: {err.roll_up} id: " + issue.service_id
                 )
 
-    service_user_data = None
-    if issue.service_user_data_dri is not None:
-        service_user_data = await pds_load(context, issue.service_user_data_dri)
+            consent_data = service["consent_schema"]
+            if consent_data.get("usage_policy") is not None:
+                if issue.author == ServiceIssueRecord.AUTHOR_OTHER:
+                    cred = await issue.user_consent_credential_pds_get(context)
+                    record["usage_policies_match"] = await verify_usage_policy(
+                        cred["credentialSubject"]["usage_policy"],
+                        consent_data["usage_policy"],
+                    )
 
-    record.update(
-        {
-            "issue_id": issue._id,
-            "label": issue.label,
-            "service_user_data": json.dumps(service_user_data),
-            "service_schema": json.dumps(issue.service_schema),
-            "consent_schema": json.dumps(consent_data),
-        }
-    )
+
+        record.update(
+            {
+                "issue_id": issue._id,
+                "label": issue.label,
+                "service_schema": issue.service_schema,
+                "consent_schema": consent_data,
+            }
+        )
+        
+    if issue.service_user_data_dri is not None:
+        try:
+            record['service_user_data'] = await pds_load(context, issue.service_user_data_dri)
+        except PDSError as err:
+            record['service_user_data'] = err.roll_up
 
     return record
 
