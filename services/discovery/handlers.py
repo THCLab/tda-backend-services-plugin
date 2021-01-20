@@ -68,8 +68,12 @@ class DiscoveryResponseHandler(BaseHandler):
         trim_acapy_fields(services)
 
         storage: BaseStorage = await context.inject(BaseStorage)
-
         services_serialized = json.dumps(services)
+
+        """
+        Check if service list from agent exists. If it exists overwrite it with new version, 
+        else create and save a service list
+        """
         try:
             query = storage.search_records(
                 "service_list", {"connection_id": connection_id}
@@ -86,7 +90,7 @@ class DiscoveryResponseHandler(BaseHandler):
 
         await responder.send_webhook(
             "verifiable-services/request-service-list",
-            {"connection_id": connection_id, "services": services_serialized},
+            {"connection_id": connection_id, "services": services},
         )
 
         # TODO: We only need to check usage_policy once !!!!!!!!
@@ -161,7 +165,7 @@ class DEBUGDiscoveryHandler(BaseHandler):
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, DEBUGDiscovery)
 
-        records = await ServiceRecord().query_fully_serialized(context)
+        records = await ServiceRecord.query_fully_serialized(context)
         response = DEBUGDiscoveryResponse(services=records)
         response.assign_thread_from(context.message)
         await responder.send_reply(response)

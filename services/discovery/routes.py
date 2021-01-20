@@ -39,6 +39,11 @@ async def add_service(request: web.BaseRequest):
     context = request.app["request_context"]
     params = await request.json()
 
+    try:
+        await DefinedConsentRecord.retrieve_by_id(context, params["consent_id"])
+    except StorageError as err:
+        raise web.HTTPBadRequest(reason=err.roll_up)
+
     service_record = ServiceRecord(
         label=params["label"],
         service_schema=params["service_schema"],
@@ -90,7 +95,7 @@ async def self_service_list(request: web.BaseRequest):
     context = request.app["request_context"]
 
     try:
-        result = await ServiceRecord().query_fully_serialized(context)
+        result = await ServiceRecord().query_fully_serialized(context, skip_invalid=False)
     except StorageNotFoundError:
         raise web.HTTPNotFound
 

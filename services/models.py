@@ -82,8 +82,9 @@ class ServiceRecord(BaseRecord):
 
     @classmethod
     async def query_fully_serialized(
-        cls, context, tag_filter=None, positive_filter=None, negative_filter=None
+        cls, context, *, tag_filter=None, positive_filter=None, negative_filter=None, skip_invalid=True
     ):
+        "Serializes consents with backing of valid PDS records"
         query = await cls.query(
             context,
             tag_filter=tag_filter,
@@ -95,13 +96,25 @@ class ServiceRecord(BaseRecord):
         for current in query:
             record = current.serialize()
             try:
-                consent = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
+                record["consent_schema"] = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
                     context, record["consent_id"]
                 )
-                record["consent_schema"] = consent
             except StorageError as err:
-                LOGGER.warn("Consent not found when serializing service %s", err)
-                continue
+                if skip_invalid:
+                    LOGGER.warn("Consent not found when serializing service %s", err)
+                    continue
+                else:  
+                    try:
+                        record["consent_schema"] = await DefinedConsentRecord.retrieve_by_id(
+                            context, record["consent_id"]
+                        )
+                        record['consent_schema']['message'] = "Failed to fetch consent data from PDS"
+                    except StorageError as err:
+                        LOGGER.warn("Consent not found in database %s", err)
+                        record['consent_schema'] = {}
+                        record['consent_schema']['message'] = "Invalid consent!"
+
+
 
             record["service_id"] = current._id
 
