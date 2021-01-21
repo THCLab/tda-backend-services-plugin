@@ -92,7 +92,9 @@ async def apply(request: web.BaseRequest):
     credential_values.update(service_consent_copy)
 
     credential = await create_credential(
-        context, {"credential_values": credential_values}, exception=web.HTTPError,
+        context,
+        {"credential_values": credential_values},
+        exception=web.HTTPError,
     )
 
     service_user_data_dri = await pds_save_a(
@@ -145,7 +147,7 @@ async def apply(request: web.BaseRequest):
     """
 
     consent_given_record = ConsentGivenRecord(connection_id=connection_id)
-    await consent_given_record.credential_pds_set(context, credential)
+    await consent_given_record.credential_pds_set(context, json.loads(credential))
     await consent_given_record.save(context)
 
     return web.json_response({"success": True, "exchange_id": record.exchange_id})
@@ -203,7 +205,11 @@ async def process_application(request: web.BaseRequest):
             outbound_handler, connection_id, exchange_id, issue.state
         )
         return web.json_response(
-            {"success": True, "issue_id": issue._id, "connection_id": connection_id,}
+            {
+                "success": True,
+                "issue_id": issue._id,
+                "connection_id": connection_id,
+            }
         )
 
     """
@@ -232,7 +238,11 @@ async def process_application(request: web.BaseRequest):
     resp = ApplicationResponse(credential=credential, exchange_id=exchange_id)
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(
-        {"success": True, "issue_id": issue._id, "connection_id": connection_id,}
+        {
+            "success": True,
+            "issue_id": issue._id,
+            "connection_id": connection_id,
+        }
     )
 
 
@@ -245,6 +255,8 @@ class GetIssueFilteredSchema(Schema):
     state = fields.Str(required=False)
 
 
+# TODO: This needs a rewrite cause it can get very easily inconsistent on one of the
+# sides
 async def serialize_and_verify_service_issue(context, issue):
     record: dict = issue.serialize()
     if issue.author == issue.AUTHOR_SELF:
@@ -274,7 +286,8 @@ async def serialize_and_verify_service_issue(context, issue):
                 return "Record not found id:" + issue.service_id
             except StorageError as err:
                 return (
-                    f"Error when retrieving service: {err.roll_up} id: " + issue.service_id
+                    f"Error when retrieving service: {err.roll_up} id: "
+                    + issue.service_id
                 )
 
             consent_data = service["consent_schema"]
@@ -286,7 +299,6 @@ async def serialize_and_verify_service_issue(context, issue):
                         consent_data["usage_policy"],
                     )
 
-
         record.update(
             {
                 "issue_id": issue._id,
@@ -295,12 +307,14 @@ async def serialize_and_verify_service_issue(context, issue):
                 "consent_schema": consent_data,
             }
         )
-        
+
     if issue.service_user_data_dri is not None:
         try:
-            record['service_user_data'] = await pds_load(context, issue.service_user_data_dri)
+            record["service_user_data"] = await pds_load(
+                context, issue.service_user_data_dri
+            )
         except PDSError as err:
-            record['service_user_data'] = err.roll_up
+            record["service_user_data"] = err.roll_up
 
     return record
 
@@ -350,7 +364,8 @@ class GetIssueByIdSchema(Schema):
 
 
 @docs(
-    tags=["Verifiable Services"], summary="Search for issue by id",
+    tags=["Verifiable Services"],
+    summary="Search for issue by id",
 )
 @match_info_schema(GetIssueByIdSchema())
 async def get_issue_by_id(request: web.BaseRequest):
