@@ -115,7 +115,13 @@ class ServiceIssueRecord(BaseRecord):
     @property
     def unique_record_values(self) -> dict:
         """Hash id of a record is based on those values"""
-        return {prop: getattr(self, prop) for prop in ("connection_id", "exchange_id",)}
+        return {
+            prop: getattr(self, prop)
+            for prop in (
+                "connection_id",
+                "exchange_id",
+            )
+        }
 
     @property
     def record_tags(self) -> dict:
@@ -136,10 +142,13 @@ class ServiceIssueRecord(BaseRecord):
         cls, context: InjectionContext, exchange_id: str, connection_id: str
     ):
         return await cls.retrieve_by_tag_filter(
-            context, {"exchange_id": exchange_id, "connection_id": connection_id},
+            context,
+            {"exchange_id": exchange_id, "connection_id": connection_id},
         )
 
     async def issuer_credential_pds_set(self, context, credential):
+        if isinstance(credential, str):
+            credential = json.loads(credential)
         self.credential_id = await pds_save_a(context, credential)
 
     async def issuer_credential_pds_get(self, context):
@@ -149,6 +158,8 @@ class ServiceIssueRecord(BaseRecord):
         return credential
 
     async def user_consent_credential_pds_set(self, context, credential):
+        if isinstance(credential, str):
+            credential = json.loads(credential)
         self.user_consent_credential_dri = await pds_save_a(context, credential)
 
     async def user_consent_credential_pds_get(self, context):
