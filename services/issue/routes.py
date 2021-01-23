@@ -113,7 +113,7 @@ async def apply(request: web.BaseRequest):
             context,
             service_appliance_data[schema_dri][payload_key],
             oca_schema_dri=dri,
-            table=OCA_DATA_CHUNKS,
+            table=OCA_DATA_CHUNKS + "." + dri
         )
 
     service_user_data_dri = await pds_save_a(
