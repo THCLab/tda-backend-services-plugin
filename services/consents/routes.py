@@ -1,3 +1,4 @@
+from os import stat
 from aiohttp import web
 from aiohttp_apispec import docs, request_schema, querystring_schema
 from aries_cloudagent.config.base import ConfigError
@@ -83,6 +84,23 @@ async def post_consent(request: web.BaseRequest):
     return web.json_response(result)
 
 
+@docs(
+    tags=["Consents"],
+    summary="Removes consent by its uuid",
+)
+async def delete_consent(request: web.BaseRequest):
+    context = request.app["request_context"]
+    consent_id = request.match_info['consent_uuid']
+
+    try:
+        record = await DefinedConsentRecord.retrieve_by_id(context, consent_id)
+    except StorageNotFoundError:
+        return web.json_response(status=404)
+    
+    await record.delete_record(context)
+
+    return web.json_response()
+
 @docs(tags=["Consents"], summary="Get all consent definitions")
 async def get_consents(request: web.BaseRequest):
     context = request.app["request_context"]
@@ -95,7 +113,7 @@ async def get_consents(request: web.BaseRequest):
     result = []
     for consent in all_consents:
         current = consent.serialize()
-        current["consent_id"] = consent.consent_id
+        current["consent_uuid"] = consent.consent_id
         oca_data = await pds_load(context, current["oca_data_dri"])
 
         if oca_data:
@@ -135,6 +153,7 @@ async def get_consents_given(request: web.BaseRequest):
 consent_routes = [
     web.post("/consents", post_consent),
     web.get("/consents", get_consents, allow_head=False),
+    web.delete("/consents/{consent_uuid}", delete_consent),
     web.get(
         "/verifiable-services/given-consents",
         get_consents_given,
