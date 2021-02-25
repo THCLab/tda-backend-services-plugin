@@ -1,7 +1,6 @@
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
 from marshmallow import fields
-
-from ...models import ConsentSchema
+import json
 from aries_cloudagent.pdstorage_thcf.api import *
 
 
@@ -41,7 +40,7 @@ class ConsentGivenRecord(BaseRecord):
     async def credential_pds_set(self, context, credential):
         if isinstance(credential, str):
             credential = json.loads(credential)
-        self.credential_dri = await pds_save_a(context, credential)
+        self.credential_dri = await pds_save(context, credential)
 
     async def credential_pds_get(self, context):
         if self.credential_dri is None:

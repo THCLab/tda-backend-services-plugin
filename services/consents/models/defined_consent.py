@@ -21,7 +21,6 @@ class DefinedConsentRecord(BaseRecord):
         *,
         label: str = None,
         oca_schema_dri: str = None,
-        oca_schema_namespace: str = None,
         oca_data_dri: str = None,
         pds_name: str = None,
         usage_policy: str = None,
@@ -32,7 +31,6 @@ class DefinedConsentRecord(BaseRecord):
         super().__init__(record_id, state, **keyword_args)
         self.label = label
         self.oca_data_dri = oca_data_dri
-        self.oca_schema_namespace = oca_schema_namespace
         self.oca_schema_dri = oca_schema_dri
         self.pds_name = pds_name
         self.usage_policy = usage_policy
@@ -44,7 +42,6 @@ class DefinedConsentRecord(BaseRecord):
             prop: getattr(self, prop)
             for prop in (
                 "label",
-                "oca_schema_namespace",
                 "oca_schema_dri",
                 "oca_data_dri",
                 "pds_name",
@@ -115,6 +112,4 @@ class DefinedConsentRecordSchema(BaseRecordSchema):
 
     label = fields.Str(required=True)
     oca_data_dri = fields.Str(required=True)
-    oca_schema_namespace = fields.Str(required=True)
     oca_schema_dri = fields.Str(required=True)
-    usage_policy = fields.Str(required=True)

@@ -14,17 +14,6 @@ from aries_cloudagent.pdstorage_thcf.api import *
 from ..models import ConsentSchema, ServiceSchema
 
 
-# def create_pds_setter(self, value_name):
-#     async def pds_setter(context, value):
-#         value = await pds_save_a(context, value)
-#         setattr(self, value_name, value)
-
-#     if value_name.endswith("_dri"):
-#         value_name = value_name[:-4]
-
-#     setattr(self, value_name + "_pds_set", pds_setter)
-
-
 class ServiceIssueRecord(BaseRecord):
     """
     dri - (without oca) identifier pointing to a public storage record in a
@@ -149,7 +138,7 @@ class ServiceIssueRecord(BaseRecord):
     async def issuer_credential_pds_set(self, context, credential):
         if isinstance(credential, str):
             credential = json.loads(credential)
-        self.credential_id = await pds_save_a(context, credential)
+        self.credential_id = await pds_save(context, credential)
 
     async def issuer_credential_pds_get(self, context):
         if self.credential_id is None:
@@ -160,7 +149,7 @@ class ServiceIssueRecord(BaseRecord):
     async def user_consent_credential_pds_set(self, context, credential):
         if isinstance(credential, str):
             credential = json.loads(credential)
-        self.user_consent_credential_dri = await pds_save_a(context, credential)
+        self.user_consent_credential_dri = await pds_save(context, credential)
 
     async def user_consent_credential_pds_get(self, context):
         if self.user_consent_credential_dri is None:

@@ -1,18 +1,9 @@
 from aries_cloudagent.config.injection_context import InjectionContext
-from aries_cloudagent.messaging.responder import BaseResponder, MockResponder
-from aries_cloudagent.storage.base import BaseStorage, StorageRecord
+from aries_cloudagent.messaging.responder import MockResponder
+from aries_cloudagent.storage.base import BaseStorage
 from aries_cloudagent.storage.basic import BasicStorage
-from aries_cloudagent.issuer.base import BaseIssuer
-from aries_cloudagent.issuer.indy import IndyIssuer
-from aries_cloudagent.ledger.base import BaseLedger
-from aries_cloudagent.ledger.indy import IndyLedger
-from asynctest import TestCase as AsyncTestCase, mock as async_mock
+from asynctest import TestCase as AsyncTestCase
 
-import hashlib
-from marshmallow import fields
-from unittest import mock, TestCase
-import datetime
-import json
 
 # Internal
 from ..models import *
@@ -99,7 +90,10 @@ class TestIssueHandlers(AsyncTestCase):
         )
         await record.save(context)
 
-        context.message = Confirmation(exchange_id=self.exchange_id, state=self.state,)
+        context.message = Confirmation(
+            exchange_id=self.exchange_id,
+            state=self.state,
+        )
 
         handler = ConfirmationHandler()
         await handler.handle(context, responder)
@@ -110,4 +104,3 @@ class TestIssueHandlers(AsyncTestCase):
             context.connection_record.connection_id,
         )
         self.assert_issue_records_are_the_same(query, record)
-

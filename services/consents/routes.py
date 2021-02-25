@@ -1,14 +1,12 @@
 from aiohttp import web
 from aiohttp_apispec import docs, request_schema, querystring_schema
-
+from aries_cloudagent.config.base import ConfigError
 from marshmallow import fields, Schema
-import json
-
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.storage.error import StorageError
 from .models.defined_consent import *
 from .models.given_consent import ConsentGivenRecord
-from ..models import ConsentSchema
+import aries_cloudagent.generated_models as Model
 
 CONSENTS_TABLE = "consents"
 
@@ -20,59 +18,69 @@ class AddConsentSchema(Schema):
     oca_schema_namespace = fields.Str(required=True)
 
 
-@request_schema(AddConsentSchema())
+# Consent:
+#     allOf:
+#     - $ref: "#/components/schemas/OCASchemaDRIDataTuple"
+#     - type: object
+#         required:
+#         - label
+#         - consent_uuid
+#         properties:
+#         label:
+#             type: string
+#         consent_uuid:
+#             type: string
+#             nullable: true
+
+# OCASchemaDRIDataTuple:
+#   allOf:
+#     - $ref: "#/components/schemas/OCASchema"
+#     - type: object
+#       required:
+#         - oca_data
+#       properties:
+#         oca_data:
+#           type: object
+#           additionalProperties:
+#             type: string
+
+# OCASchema:
+#   required:
+#     - oca_schema_dri
+#   properties:
+#     oca_schema_dri:
+#       type: string
+
+
+@request_schema(Model.Consent)
 @docs(
-    tags=["Defined Consents"],
+    tags=["Consents"],
     summary="Add consent definition",
-    description="""
-    "oca_data": {
-            "expiration": "7200",
-            "limitation": "7200",
-            "dictatedBy": "test",
-            "validityTTL": "7200",
-        }
-""",
 )
 async def add_consent(request: web.BaseRequest):
     context = request.app["request_context"]
-    params = await request.json()
-    errors = []
+    body = await request.json()
 
-    try:
-        existing_consents = await DefinedConsentRecord.query(
-            context, {"label": params["label"]}
-        )
-    except StorageError as err:
-        raise web.HTTPInternalServerError(reason=err)
+    oca_data_dri = await pds_save(
+        context, body["oca_data"], body["oca_schema_dri"]
+    )
 
-    if existing_consents:
-        errors.append(f"Consent with '{params['label']}' label is already defined")
+    pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
+    pds_name = await pds_active_get_full_name(context)
 
-    if errors:
-        return web.json_response({"success": False, "errors": errors})
-    else:
-        oca_data_dri = await pds_save_a(
-            context,
-            params["oca_data"],
-            table=CONSENTS_TABLE,
-            oca_schema_dri=params["oca_schema_dri"],
-        )
+    record = DefinedConsentRecord(
+        label=body["label"],
+        oca_schema_dri=body["oca_schema_dri"],
+        oca_data_dri=oca_data_dri,
+        pds_name=str(pds_name),
+        usage_policy=pds_usage_policy,
+    )
 
-        pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
+    result = record.serialize()
+    result['consent_uuid'] = await record.save(context)
+    result['oca_data'] = body["oca_data"]
 
-        pds_name = await pds_get_active_name(context)
-        defined_consent = DefinedConsentRecord(
-            label=params["label"],
-            oca_schema_dri=params["oca_schema_dri"],
-            oca_schema_namespace=params["oca_schema_namespace"],
-            oca_data_dri=oca_data_dri,
-            pds_name=str(pds_name),
-            usage_policy=pds_usage_policy,
-        )
-
-        consent_id = await defined_consent.save(context)
-
-        return web.json_response({"success": True, "consent_id": consent_id})
+    return web.json_response(result)
 
 
 @docs(tags=["Defined Consents"], summary="Get all consent definitions")
@@ -80,7 +88,7 @@ async def get_consents(request: web.BaseRequest):
     context = request.app["request_context"]
 
     try:
-        pds_name = await pds_get_active_name(context)
+        pds_name = await pds_active_get_full_name(context)
         all_consents = await DefinedConsentRecord.query(
             context, {"pds_name": str(pds_name)}
         )
@@ -127,3 +135,14 @@ async def get_consents_given(request: web.BaseRequest):
         result.append(record)
 
     return web.json_response({"success": True, "result": result})
+
+
+consent_routes = [
+    web.post("/consents", add_consent),
+    web.get("/verifiable-services/consents", get_consents, allow_head=False),
+    web.get(
+        "/verifiable-services/given-consents",
+        get_consents_given,
+        allow_head=False,
+    ),
+]
