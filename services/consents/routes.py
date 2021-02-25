@@ -57,7 +57,7 @@ class AddConsentSchema(Schema):
     tags=["Consents"],
     summary="Add consent definition",
 )
-async def add_consent(request: web.BaseRequest):
+async def post_consent(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
 
@@ -83,17 +83,14 @@ async def add_consent(request: web.BaseRequest):
     return web.json_response(result)
 
 
-@docs(tags=["Defined Consents"], summary="Get all consent definitions")
+@docs(tags=["Consents"], summary="Get all consent definitions")
 async def get_consents(request: web.BaseRequest):
     context = request.app["request_context"]
 
-    try:
-        pds_name = await pds_active_get_full_name(context)
-        all_consents = await DefinedConsentRecord.query(
-            context, {"pds_name": str(pds_name)}
-        )
-    except StorageError as err:
-        raise web.HTTPNotFound(reason=err)
+    pds_name = await pds_active_get_full_name(context)
+    all_consents = await DefinedConsentRecord.query(
+        context, {"pds_name": str(pds_name)}
+    )
 
     result = []
     for consent in all_consents:
@@ -103,12 +100,10 @@ async def get_consents(request: web.BaseRequest):
 
         if oca_data:
             current["oca_data"] = oca_data
-        else:
-            current["oca_data"] = None
 
         result.append(current)
 
-    return web.json_response({"success": True, "result": result})
+    return web.json_response(result)
 
 
 class GetConsentsGivenQuerySchema(Schema):
@@ -138,8 +133,8 @@ async def get_consents_given(request: web.BaseRequest):
 
 
 consent_routes = [
-    web.post("/consents", add_consent),
-    web.get("/verifiable-services/consents", get_consents, allow_head=False),
+    web.post("/consents", post_consent),
+    web.get("/consents", get_consents, allow_head=False),
     web.get(
         "/verifiable-services/given-consents",
         get_consents_given,
