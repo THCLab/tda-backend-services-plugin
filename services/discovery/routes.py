@@ -1,18 +1,12 @@
 from aries_cloudagent.connections.models.connection_record import ConnectionRecord
-from aries_cloudagent.messaging.valid import UUIDFour
 from aries_cloudagent.storage.error import StorageNotFoundError, StorageDuplicateError
-from aries_cloudagent.storage.base import BaseStorage
 from ..consents.models.defined_consent import *
 
 from aiohttp import web
-from aiohttp import ClientSession
 from aiohttp_apispec import docs, request_schema, match_info_schema
 
 from marshmallow import fields, Schema
-import logging
-import hashlib
 import time
-from typing import Sequence
 
 # Internal
 from ..models import *
@@ -89,13 +83,16 @@ async def request_services_list(request: web.BaseRequest):
 
 
 @docs(
-    tags=["Service Discovery"], summary="Get a list of all services I registered",
+    tags=["Service Discovery"],
+    summary="Get a list of all services I registered",
 )
 async def self_service_list(request: web.BaseRequest):
     context = request.app["request_context"]
 
     try:
-        result = await ServiceRecord().query_fully_serialized(context, skip_invalid=False)
+        result = await ServiceRecord().query_fully_serialized(
+            context, skip_invalid=False
+        )
     except StorageNotFoundError:
         raise web.HTTPNotFound
 
@@ -107,7 +104,8 @@ class GetServiceSchema(Schema):
 
 
 @docs(
-    tags=["Service Discovery"], summary="Get a service registered by ME",
+    tags=["Service Discovery"],
+    summary="Get a service registered by ME",
 )
 @match_info_schema(GetServiceSchema)
 async def get_service(request: web.BaseRequest):
@@ -121,38 +119,21 @@ async def get_service(request: web.BaseRequest):
     return web.json_response({"success": True, "result": result})
 
 
-async def DEBUGrequest_services_list(request: web.BaseRequest):
-    context = request.app["request_context"]
-    connection_id = request.match_info["connection_id"]
-    outbound_handler = request.app["outbound_message_router"]
-
-    try:
-        connection: ConnectionRecord = await ConnectionRecord.retrieve_by_id(
-            context, connection_id
-        )
-    except StorageNotFoundError:
-        raise web.HTTPNotFound
-
-    if connection.is_ready:
-        # First we request service list from second agent
-        # It has to go through a different route
-        request = DEBUGDiscovery()
-        await outbound_handler(request, connection_id=connection_id)
-
-        # So here sleep is used to query records in a loop
-        # To finally get the records
-        max_retries = 8
-        for i in range(max_retries):
-            try:
-                query: DEBUGServiceDiscoveryRecord = (
-                    await DEBUGServiceDiscoveryRecord().retrieve_by_connection_id(
-                        context, connection_id
-                    )
-                )
-                return web.json_response({"success": True, "result": query.serialize()})
-            except StorageNotFoundError:
-                if i >= max_retries:
-                    raise web.HTTPRequestTimeout
-            time.sleep(1)
-
-    raise web.HTTPNotFound("Try again!")
+discovery_routes = [
+    web.post("/verifiable-services/add", add_service),
+    web.get(
+        "/verifiable-services/request-service-list/{connection_id}",
+        request_services_list,
+        allow_head=False,
+    ),
+    web.get(
+        "/verifiable-services/self-service-list",
+        self_service_list,
+        allow_head=False,
+    ),
+    web.get(
+        "/verifiable-services/service/{service_id}",
+        get_service,
+        allow_head=False,
+    ),
+]

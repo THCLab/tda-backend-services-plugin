@@ -379,23 +379,19 @@ async def get_issue_by_id(request: web.BaseRequest):
     return web.json_response({"success": True, "result": record})
 
 
-async def DEBUGapply_status(request: web.BaseRequest):
-    context = request.app["request_context"]
-    params = await request.json()
-
-    query = await ServiceIssueRecord.query(context, tag_filter=params)
-
-    query = [i.serialize() for i in query]
-
-    return web.json_response({"success": True, "result": query})
-
-
-async def DEBUGget_credential_data(request: web.BaseRequest):
-    context = request.app["request_context"]
-    data_dri = request.match_info["data_dri"]
-
-    query: ServiceIssueRecord = await ServiceIssueRecord.retrieve_by_id(
-        context, data_dri
-    )
-
-    return web.json_response({"success": True, "credential_data": query.payload})
+services_routes = [
+    web.get(
+        "/verifiable-services/get-issue/{issue_id}",
+        get_issue_by_id,
+        allow_head=False,
+    ),
+    web.post(
+        "/verifiable-services/get-issue",
+        get_issue_self,
+    ),
+    web.post("/verifiable-services/apply", apply),
+    web.post(
+        "/verifiable-services/process-application",
+        process_application,
+    ),
+]
