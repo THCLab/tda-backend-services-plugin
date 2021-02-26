@@ -22,9 +22,10 @@ from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
     retrieve_connection,
 )
 from ..util import *
+import aries_cloudagent.generated_models as Model
+
 
 LOGGER = logging.getLogger(__name__)
-MY_SERVICE_DATA_TABLE = "my_service_data_table"
 
 
 class ApplySchema(Schema):
@@ -379,11 +380,45 @@ async def get_issue_by_id(request: web.BaseRequest):
     return web.json_response({"success": True, "result": record})
 
 
+@request_schema(Model.BaseService)
+@docs(tags=["Services"], summary="Add a verifiable service")
+async def add_service(request: web.BaseRequest):
+    context = request.app["request_context"]
+    body = await request.json()
+    consent_id = body.get("consent_uuid")
+    if __debug__:
+        assert consent_id is not None
+
+    try:
+        await DefinedConsentRecord.retrieve_by_id(context, consent_id)
+    except StorageError:
+        return web.json_response(status=404, text="Consent not found")
+
+    service_record = ServiceRecord(
+        label=body["label"],
+        service_schema_dri=body["service_schema_dri"],
+        consent_id=consent_id,
+    )
+
+    uuid = await service_record.save(context)
+
+    result = service_record.serialize()
+    result["service_uuid"] = uuid
+    result["consent_uuid"] = result["consent_id"]
+    result.pop("consent_id", None)
+
+    return web.json_response(result, status=201)
+
+
 services_routes = [
     web.get(
         "/verifiable-services/get-issue/{issue_id}",
         get_issue_by_id,
         allow_head=False,
+    ),
+    web.post(
+        "/services/add",
+        add_service,
     ),
     web.post(
         "/verifiable-services/get-issue",

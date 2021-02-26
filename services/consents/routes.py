@@ -19,40 +19,6 @@ class AddConsentSchema(Schema):
     oca_schema_namespace = fields.Str(required=True)
 
 
-# Consent:
-#     allOf:
-#     - $ref: "#/components/schemas/OCASchemaDRIDataTuple"
-#     - type: object
-#         required:
-#         - label
-#         - consent_uuid
-#         properties:
-#         label:
-#             type: string
-#         consent_uuid:
-#             type: string
-#             nullable: true
-
-# OCASchemaDRIDataTuple:
-#   allOf:
-#     - $ref: "#/components/schemas/OCASchema"
-#     - type: object
-#       required:
-#         - oca_data
-#       properties:
-#         oca_data:
-#           type: object
-#           additionalProperties:
-#             type: string
-
-# OCASchema:
-#   required:
-#     - oca_schema_dri
-#   properties:
-#     oca_schema_dri:
-#       type: string
-
-
 @request_schema(Model.Consent)
 @docs(
     tags=["Consents"],
@@ -62,9 +28,7 @@ async def post_consent(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
 
-    oca_data_dri = await pds_save(
-        context, body["oca_data"], body["oca_schema_dri"]
-    )
+    oca_data_dri = await pds_save(context, body["oca_data"], body["oca_schema_dri"])
 
     pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
     pds_name = await pds_active_get_full_name(context)
@@ -78,8 +42,8 @@ async def post_consent(request: web.BaseRequest):
     )
 
     result = record.serialize()
-    result['consent_uuid'] = await record.save(context)
-    result['oca_data'] = body["oca_data"]
+    result["consent_uuid"] = await record.save(context)
+    result["oca_data"] = body["oca_data"]
 
     return web.json_response(result)
 
@@ -90,16 +54,17 @@ async def post_consent(request: web.BaseRequest):
 )
 async def delete_consent(request: web.BaseRequest):
     context = request.app["request_context"]
-    consent_id = request.match_info['consent_uuid']
+    consent_id = request.match_info["consent_uuid"]
 
     try:
         record = await DefinedConsentRecord.retrieve_by_id(context, consent_id)
     except StorageNotFoundError:
         return web.json_response(status=404)
-    
+
     await record.delete_record(context)
 
     return web.json_response()
+
 
 @docs(tags=["Consents"], summary="Get all consent definitions")
 async def get_consents(request: web.BaseRequest):
