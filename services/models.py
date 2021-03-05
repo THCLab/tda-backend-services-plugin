@@ -1,14 +1,11 @@
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
 from aries_cloudagent.storage.error import (
     StorageError,
-    StorageNotFoundError,
 )
 
 from marshmallow import fields, Schema
-from .consents.models.defined_consent import DefinedConsentRecord
 from .consents.routes import DefinedConsent
 import logging
-from aiohttp import web
 from aries_cloudagent.pdstorage_thcf.api import *
 
 LOGGER = logging.getLogger(__name__)
@@ -26,11 +23,6 @@ class ConsentSchema(Schema):
 class ServiceSchema(Schema):
     oca_schema_dri = fields.Str(required=True)
     oca_schema_namespace = fields.Str(required=True)
-
-
-class OcaSchema(Schema):
-    oca_schema_dri = fields.Str(required=False)
-    oca_schema_namespace = fields.Str(required=False)
 
 
 class ServiceRecord(BaseRecord):
