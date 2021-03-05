@@ -65,6 +65,7 @@ class ApplicationHandler(BaseHandler):
                     context, context.message.service_id
                 )
             )
+
         except StorageNotFoundError as err:
             LOGGER.warn(err)
             await send_confirmation(

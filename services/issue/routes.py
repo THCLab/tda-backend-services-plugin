@@ -6,7 +6,7 @@ from aries_cloudagent.issuer.base import BaseIssuer, IssuerError
 from aries_cloudagent.wallet.base import BaseWallet
 
 from aiohttp import web
-from aiohttp_apispec import docs, request_schema, match_info_schema
+from aiohttp_apispec import docs, request_schema, match_info_schema, querystring_schema
 
 from marshmallow import fields, Schema
 import logging
@@ -15,7 +15,7 @@ import json
 from .models import *
 from .message_types import *
 from ..models import *
-from ..consents.models.given_consent import ConsentGivenRecord
+from ..consents.routes import ConsentGiven
 from ..discovery.message_types import DiscoveryServiceSchema
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
@@ -141,9 +141,8 @@ async def apply(request: web.BaseRequest):
 
     """
 
-    consent_given_record = ConsentGivenRecord(connection_id=connection_id)
-    await consent_given_record.credential_pds_set(context, credential)
-    await consent_given_record.save(context)
+    consent_given = ConsentGiven(credential, connection_id)
+    await pds_save_model(context, consent_given, connection_id)
 
     return web.json_response({"success": True, "exchange_id": record.exchange_id})
 
@@ -380,8 +379,8 @@ async def get_issue_by_id(request: web.BaseRequest):
     return web.json_response({"success": True, "result": record})
 
 
-@request_schema(Model.BaseService)
 @docs(tags=["Services"], summary="Add a verifiable service")
+@request_schema(Model.BaseService)
 async def add_service(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
@@ -390,9 +389,9 @@ async def add_service(request: web.BaseRequest):
         assert consent_id is not None
 
     try:
-        await DefinedConsentRecord.retrieve_by_id(context, consent_id)
-    except StorageError:
-        return web.json_response(status=404, text="Consent not found")
+        await pds_load_model(context, consent_id, DefinedConsent)
+    except PDSError as err:
+        return web.json_response(status=404, text="Consent not found - " + err.roll_up)
 
     service_record = ServiceRecord(
         label=body["label"],
@@ -410,10 +409,56 @@ async def add_service(request: web.BaseRequest):
     return web.json_response(result, status=201)
 
 
+@docs(
+    tags=["Services"],
+    summary="Retrieve all defined services",
+)
+@querystring_schema(Model.ServicesInput.Get.Query)
+async def get_services(request: web.BaseRequest):
+    context = request.app["request_context"]
+    connection_id = request.query.get("connection_id")
+
+    tag_filter = {}
+    if connection_id is not None:
+        tag_filter["connection_id"] = connection_id
+
+    try:
+        result = await ServiceRecord.query_fully_serialized(
+            context, skip_invalid=False, tag_filter=tag_filter
+        )
+    except StorageNotFoundError as err:
+        raise web.HTTPNotFound(err.roll_up)
+
+    return web.json_response(result)
+
+
+@docs(
+    tags=["Services"],
+    summary="Retrieve all defined services",
+)
+async def get_service(request: web.BaseRequest):
+    context = request.app["request_context"]
+    connection_id = request.match_info["connection_id"]
+
+    try:
+        result = await ServiceRecord.retrieve_by_id_fully_serialized(
+            context, connection_id
+        )
+    except StorageNotFoundError as err:
+        raise web.HTTPNotFound(err.roll_up)
+
+    return web.json_response(result)
+
+
 services_routes = [
     web.get(
         "/verifiable-services/get-issue/{issue_id}",
         get_issue_by_id,
+        allow_head=False,
+    ),
+    web.get(
+        "/services",
+        get_services,
         allow_head=False,
     ),
     web.post(

@@ -1,30 +1,17 @@
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
-from aries_cloudagent.storage.base import BaseStorage
-from aries_cloudagent.config.injection_context import InjectionContext
 from aries_cloudagent.storage.error import (
-    StorageDuplicateError,
     StorageError,
     StorageNotFoundError,
 )
-from aries_cloudagent.messaging.util import datetime_to_str, time_now
 
-import hashlib
 from marshmallow import fields, Schema
-from typing import Mapping, Any
-import uuid
-import json
 from .consents.models.defined_consent import DefinedConsentRecord
+from .consents.routes import DefinedConsent
 import logging
 from aiohttp import web
+from aries_cloudagent.pdstorage_thcf.api import *
 
 LOGGER = logging.getLogger(__name__)
-
-
-class ConsentContentSchema(Schema):
-    expiration = fields.Str(required=True)
-    limitation = fields.Str(required=True)
-    dictatedBy = fields.Str(required=True)
-    validityTTL = fields.Str(required=True)
 
 
 class ConsentSchema(Schema):
@@ -49,6 +36,7 @@ class OcaSchema(Schema):
 class ServiceRecord(BaseRecord):
     RECORD_ID_NAME = "record_id"
     RECORD_TYPE = "verifiable_services"
+    CONNECTION_ID_SELF = "mine"
 
     class Meta:
         schema_class = "ServiceRecordSchema"
@@ -61,10 +49,12 @@ class ServiceRecord(BaseRecord):
         consent_id: str = None,
         state: str = None,
         record_id: str = None,
+        connection_id: str = CONNECTION_ID_SELF,
         **keyword_args,
     ):
         super().__init__(record_id, state, **keyword_args)
         self.service_schema_dri = service_schema_dri
+        self.connection_id = connection_id
         self.consent_id = consent_id
         self.label = label
 
@@ -74,6 +64,7 @@ class ServiceRecord(BaseRecord):
         return {
             prop: getattr(self, prop)
             for prop in (
+                "connection_id",
                 "service_schema_dri",
                 "consent_id",
                 "label",
@@ -82,7 +73,7 @@ class ServiceRecord(BaseRecord):
 
     @property
     def record_tags(self) -> dict:
-        return {"label": self.label}
+        return {"label": self.label, "connection_id": self.connection_id}
 
     @classmethod
     async def query_fully_serialized(
@@ -106,31 +97,23 @@ class ServiceRecord(BaseRecord):
         for current in query:
             record = current.serialize()
             try:
-                record[
-                    "consent_schema"
-                ] = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
-                    context, record["consent_id"]
+                record["consent_schema"] = await pds_load_model(
+                    context, record["consent_id"], DefinedConsent
                 )
-            except StorageError as err:
+                record["consent_schema"] = record["consent_schema"].__dict__
+            except PDSError as err:
                 if skip_invalid:
-                    LOGGER.warn("Consent not found when serializing service %s", err)
+                    LOGGER.warn(
+                        "Consent not found when serializing service %s", err.roll_up
+                    )
                     continue
                 else:
-                    try:
-                        record[
-                            "consent_schema"
-                        ] = await DefinedConsentRecord.retrieve_by_id(
-                            context, record["consent_id"]
-                        )
-                        record["consent_schema"][
-                            "message"
-                        ] = "Failed to fetch consent data from PDS"
-                    except StorageError as err:
-                        LOGGER.warn("Consent not found in database %s", err)
-                        record["consent_schema"] = {}
-                        record["consent_schema"]["message"] = "Invalid consent!"
+                    record["consent_schema"] = {
+                        "msg": "Failed to fetch consent!",
+                        "exception": err.roll_up,
+                    }
 
-            record["service_id"] = current._id
+            record["service_uuid"] = current._id
 
             result.append(record)
 
@@ -139,29 +122,15 @@ class ServiceRecord(BaseRecord):
     @classmethod
     async def retrieve_by_id_fully_serialized(cls, context, id):
         record = await cls.retrieve_by_id(context, id)
-        consent = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
-            context, record.consent_id
-        )
+        try:
+            consent = await pds_load_model(context, record.consent_id, DefinedConsent)
+        except PDSError as err:
+            raise StorageError(err.roll_up)
 
         record = record.serialize()
         record["consent_schema"] = consent
         record.pop("created_at", None)
         record.pop("updated_at", None)
-
-        return record
-
-    @classmethod
-    async def routes_retrieve_by_id_fully_serialized(cls, context, id):
-        try:
-            record = await cls.retrieve_by_id_fully_serialized(context, id)
-        except PDSRecordNotFoundError as err:
-            raise web.HTTPNotFound(reason=err)
-        except StorageNotFoundError as err:
-            raise web.HTTPNotFound(reason=err)
-        except PDSError as err:
-            raise web.HTTPInternalServerError(reason=err)
-        except StorageError as err:
-            raise web.HTTPInternalServerError(reason=err)
 
         return record
 
@@ -174,3 +143,4 @@ class ServiceRecordSchema(BaseRecordSchema):
     service_id = fields.Str(required=True)
     service_schema_dri = fields.Str(required=True)
     consent_id = fields.Str(required=True)
+    connection_id = fields.Str(required=True)

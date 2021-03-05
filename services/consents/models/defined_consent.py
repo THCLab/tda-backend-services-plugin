@@ -1,11 +1,8 @@
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
-from marshmallow import fields
-
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.pdstorage_thcf.error import *
-import json
-
 from aries_cloudagent.storage.error import *
+from marshmallow import fields
 from aiohttp import web
 
 
@@ -71,21 +68,6 @@ class DefinedConsentRecord(BaseRecord):
         record.pop("created_at", None)
         record.pop("updated_at", None)
         record.pop("label", None)
-
-        return record
-
-    @classmethod
-    async def routes_retrieve_by_id_fully_serialized(cls, context, id):
-        try:
-            record = await cls.retrieve_by_id_fully_serialized(context, id)
-        except PDSRecordNotFoundError as err:
-            raise web.HTTPNotFound(reason=err)
-        except StorageNotFoundError as err:
-            raise web.HTTPNotFound(reason=err)
-        except PDSError as err:
-            raise web.HTTPInternalServerError(reason=err)
-        except StorageError as err:
-            raise web.HTTPInternalServerError(reason=err)
 
         return record
 
