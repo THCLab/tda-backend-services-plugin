@@ -1,11 +1,7 @@
-from os import stat
 from aiohttp import web
 from aiohttp_apispec import docs, request_schema, querystring_schema
-from aries_cloudagent.config.base import ConfigError
 from marshmallow import fields, Schema
 from aries_cloudagent.pdstorage_thcf.api import *
-from aries_cloudagent.storage.error import StorageError
-from .models.defined_consent import *
 import aries_cloudagent.generated_models as Model
 
 
@@ -32,12 +28,12 @@ async def post_consent(request: web.BaseRequest):
     body = await request.json()
 
     pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
-
     model = DefinedConsent(body["label"], pds_usage_policy, body["oca_data"])
     dri = await pds_save_model(context, model, oca_schema_dri=body["oca_schema_dri"])
     fetch = await pds_load_model(context, dri, DefinedConsent)
     result = fetch.__dict__
     result["dri"] = dri
+    result["oca_schema_dri"] = body["oca_schema_dri"]
 
     return web.json_response(result)
 
@@ -46,24 +42,24 @@ async def post_consent(request: web.BaseRequest):
 async def get_consents(request: web.BaseRequest):
     context = request.app["request_context"]
 
-    consent_oca_schema_dri = "string"
+    consent_oca_schema_dri = "consent_dri"
     result = await pds_query_model_by_oca_schema_dri(context, consent_oca_schema_dri)
+    for i in result:
+        i["oca_schema_dri"] = consent_oca_schema_dri
     return web.json_response(result)
 
 
-class GetConsentsGivenQuerySchema(Schema):
-    connection_id = fields.Str(required=False)
-
-
 @docs(
-    tags=["Defined Consents"],
+    tags=["Documents"],
     summary="Get all the consents I have given to other people",
 )
-@querystring_schema(GetConsentsGivenQuerySchema)
 async def get_consents_given(request: web.BaseRequest):
     context = request.app["request_context"]
     try:
-        result = await pds_query_model_by_oca_schema_dri(context, request.query)
+        consent_give_oca_schema_dri_stub = "consent_given"
+        result = await pds_query_model_by_oca_schema_dri(
+            context, consent_give_oca_schema_dri_stub
+        )
     except PDSError as err:
         raise web.HTTPInternalServerError(reason=err.roll_up)
 
@@ -74,7 +70,7 @@ consent_routes = [
     web.post("/consents", post_consent),
     web.get("/consents", get_consents, allow_head=False),
     web.get(
-        "/verifiable-services/given-consents",
+        "/documents/given-consents",
         get_consents_given,
         allow_head=False,
     ),

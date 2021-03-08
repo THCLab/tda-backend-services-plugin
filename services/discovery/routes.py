@@ -1,6 +1,5 @@
 from aries_cloudagent.connections.models.connection_record import ConnectionRecord
 from aries_cloudagent.storage.error import StorageNotFoundError
-from ..consents.models.defined_consent import *
 
 from aiohttp import web
 from aiohttp_apispec import docs

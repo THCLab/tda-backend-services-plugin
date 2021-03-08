@@ -43,20 +43,16 @@ class DiscoveryHandler(BaseHandler):
         await responder.send_reply(response)
 
 
-def trim_acapy_fields(list_of_dict):
-    for i in list_of_dict:
-        i.pop("created_at", None)
-        i.pop("updated_at", None)
-        i.pop("consent_id", None)
-
-
 class DiscoveryResponseHandler(BaseHandler):
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, DiscoveryResponse)
         connection_id = context.connection_record.connection_id
 
         services = context.message.services
-        trim_acapy_fields(services)
+        for i in services:
+            i.pop("created_at", None)
+            i.pop("updated_at", None)
+            i.pop("consent_dri", None)
 
         storage: BaseStorage = await context.inject(BaseStorage)
         services_serialized = json.dumps(services)

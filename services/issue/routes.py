@@ -141,8 +141,9 @@ async def apply(request: web.BaseRequest):
 
     """
 
+    consent_give_oca_schema_dri_stub = "consent_given"
     consent_given = ConsentGiven(credential, connection_id)
-    await pds_save_model(context, consent_given, connection_id)
+    await pds_save_model(context, consent_given, consent_give_oca_schema_dri_stub)
 
     return web.json_response({"success": True, "exchange_id": record.exchange_id})
 
@@ -241,150 +242,12 @@ async def process_application(request: web.BaseRequest):
     )
 
 
-class GetIssueFilteredSchema(Schema):
-    connection_id = fields.Str(required=False)
-    exchange_id = fields.Str(required=False)
-    service_id = fields.Str(required=False)
-    label = fields.Str(required=False)
-    author = fields.Str(required=False)
-    state = fields.Str(required=False)
-
-
-# TODO: This needs a rewrite cause it can get very easily inconsistent on one of the
-# sides
-async def serialize_and_verify_service_issue(context, issue):
-    record: dict = issue.serialize()
-    if issue.author == issue.AUTHOR_SELF:
-        storage: BaseStorage = await context.inject(BaseStorage)
-        try:
-            query = storage.search_records(
-                "service_list", {"connection_id": record["connection_id"]}
-            )
-            query = await query.fetch_single()
-            services = json.loads(query.value)
-            for i in services:
-                if i["service_id"] == record["service_id"]:
-                    record["consent_schema"] = i["consent_schema"]
-                    record["service_schema"] = i["service_schema"]
-                    record["label"] = i["label"]
-        except StorageError:
-            pass
-
-    else:
-        consent_data = None
-        if record["service_id"] is not None:
-            try:
-                service = await ServiceRecord.retrieve_by_id_fully_serialized(
-                    context, record["service_id"]
-                )
-            except StorageNotFoundError:
-                return "Record not found id:" + issue.service_id
-            except StorageError as err:
-                return (
-                    f"Error when retrieving service: {err.roll_up} id: "
-                    + issue.service_id
-                )
-
-            consent_data = service["consent_schema"]
-            if consent_data.get("usage_policy") is not None:
-                if issue.author == ServiceIssueRecord.AUTHOR_OTHER:
-                    cred = await issue.user_consent_credential_pds_get(context)
-                    record["usage_policies_match"] = await verify_usage_policy(
-                        cred["credentialSubject"]["usage_policy"],
-                        consent_data["usage_policy"],
-                    )
-
-        record.update(
-            {
-                "issue_id": issue._id,
-                "label": issue.label,
-                "service_schema": issue.service_schema,
-                "consent_schema": consent_data,
-            }
-        )
-
-    if issue.service_user_data_dri is not None:
-        try:
-            record["service_user_data"] = await pds_load(
-                context, issue.service_user_data_dri
-            )
-        except PDSError as err:
-            record["service_user_data"] = err.roll_up
-
-    return record
-
-
-@docs(
-    tags=["Verifiable Services"],
-    summary="Search for issue by a specified tag",
-    description="""
-    You don't need to fill any of this, all the filters are optional
-    make sure to delete ones you dont use
-
-    STATES: 
-    "pending" - not processed yet (not rejected or accepted)
-    "no response" - agent didn't respond at all yet
-    "rejected"
-    "accepted"
-
-    AUTHORS:
-    "self"
-    "other"
-
-    """,
-)
-@request_schema(GetIssueFilteredSchema())
-async def get_issue_self(request: web.BaseRequest):
-    context = request.app["request_context"]
-    outbound_handler = request.app["outbound_message_router"]
-    params = await request.json()
-
-    try:
-        query = await ServiceIssueRecord.query(context, tag_filter=params)
-    except StorageError as err:
-        raise web.HTTPInternalServerError(err)
-
-    result = []
-    for i in query:
-
-        record = await serialize_and_verify_service_issue(context, i)
-
-        result.append(record)
-
-    return web.json_response({"success": True, "result": result})
-
-
-class GetIssueByIdSchema(Schema):
-    issue_id = fields.Str(required=True)
-
-
-@docs(
-    tags=["Verifiable Services"],
-    summary="Search for issue by id",
-)
-@match_info_schema(GetIssueByIdSchema())
-async def get_issue_by_id(request: web.BaseRequest):
-    context = request.app["request_context"]
-    issue_id = request.match_info["issue_id"]
-
-    try:
-        query: ServiceIssueRecord = await ServiceIssueRecord.retrieve_by_id(
-            context, issue_id
-        )
-    except StorageError as err:
-        raise web.HTTPInternalServerError(err)
-
-    record = await serialize_and_verify_service_issue(context, query)
-
-    return web.json_response({"success": True, "result": record})
-
-
 @docs(tags=["Services"], summary="Add a verifiable service")
 @request_schema(Model.BaseService)
 async def add_service(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
-    consent_id = body.get("consent_uuid")
+    consent_id = body.get("consent_dri")
     if __debug__:
         assert consent_id is not None
 
@@ -396,15 +259,13 @@ async def add_service(request: web.BaseRequest):
     service_record = ServiceRecord(
         label=body["label"],
         service_schema_dri=body["service_schema_dri"],
-        consent_id=consent_id,
+        consent_dri=consent_id,
     )
 
     uuid = await service_record.save(context)
 
     result = service_record.serialize()
     result["service_uuid"] = uuid
-    result["consent_uuid"] = result["consent_id"]
-    result.pop("consent_id", None)
 
     return web.json_response(result, status=201)
 
@@ -413,19 +274,11 @@ async def add_service(request: web.BaseRequest):
     tags=["Services"],
     summary="Retrieve all defined services",
 )
-@querystring_schema(Model.ServicesInput.Get.Query)
 async def get_services(request: web.BaseRequest):
     context = request.app["request_context"]
-    connection_id = request.query.get("connection_id")
-
-    tag_filter = {}
-    if connection_id is not None:
-        tag_filter["connection_id"] = connection_id
 
     try:
-        result = await ServiceRecord.query_fully_serialized(
-            context, skip_invalid=False, tag_filter=tag_filter
-        )
+        result = await ServiceRecord.query_fully_serialized(context, skip_invalid=False)
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(err.roll_up)
 
@@ -438,36 +291,38 @@ async def get_services(request: web.BaseRequest):
 )
 async def get_service(request: web.BaseRequest):
     context = request.app["request_context"]
-    connection_id = request.match_info["connection_id"]
+    service_uuid = request.match_info["service_uuid"]
 
     try:
         result = await ServiceRecord.retrieve_by_id_fully_serialized(
-            context, connection_id
+            context, service_uuid
         )
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(err.roll_up)
 
+    result["service_uuid"] = service_uuid
     return web.json_response(result)
 
 
 services_routes = [
-    web.get(
-        "/verifiable-services/get-issue/{issue_id}",
-        get_issue_by_id,
-        allow_head=False,
-    ),
+    # web.get(
+    #     "/connections/{connection_uuid}/services",
+    #     get_services,
+    #     allow_head=False,
+    # ),
     web.get(
         "/services",
         get_services,
         allow_head=False,
     ),
+    web.get(
+        "/services/{service_uuid}",
+        get_service,
+        allow_head=False,
+    ),
     web.post(
         "/services/add",
         add_service,
-    ),
-    web.post(
-        "/verifiable-services/get-issue",
-        get_issue_self,
     ),
     web.post("/verifiable-services/apply", apply),
     web.post(

@@ -28,7 +28,6 @@ class ServiceSchema(Schema):
 class ServiceRecord(BaseRecord):
     RECORD_ID_NAME = "record_id"
     RECORD_TYPE = "verifiable_services"
-    CONNECTION_ID_SELF = "mine"
 
     class Meta:
         schema_class = "ServiceRecordSchema"
@@ -38,16 +37,14 @@ class ServiceRecord(BaseRecord):
         *,
         label: str = None,
         service_schema_dri,
-        consent_id: str = None,
+        consent_dri: str = None,
         state: str = None,
         record_id: str = None,
-        connection_id: str = CONNECTION_ID_SELF,
         **keyword_args,
     ):
         super().__init__(record_id, state, **keyword_args)
         self.service_schema_dri = service_schema_dri
-        self.connection_id = connection_id
-        self.consent_id = consent_id
+        self.consent_dri = consent_dri
         self.label = label
 
     @property
@@ -56,16 +53,15 @@ class ServiceRecord(BaseRecord):
         return {
             prop: getattr(self, prop)
             for prop in (
-                "connection_id",
                 "service_schema_dri",
-                "consent_id",
+                "consent_dri",
                 "label",
             )
         }
 
     @property
     def record_tags(self) -> dict:
-        return {"label": self.label, "connection_id": self.connection_id}
+        return {"label": self.label}
 
     @classmethod
     async def query_fully_serialized(
@@ -89,10 +85,9 @@ class ServiceRecord(BaseRecord):
         for current in query:
             record = current.serialize()
             try:
-                record["consent_schema"] = await pds_load_model(
-                    context, record["consent_id"], DefinedConsent
+                record["consent_schema"] = await pds_load(
+                    context, record["consent_dri"]
                 )
-                record["consent_schema"] = record["consent_schema"].__dict__
             except PDSError as err:
                 if skip_invalid:
                     LOGGER.warn(
@@ -115,15 +110,13 @@ class ServiceRecord(BaseRecord):
     async def retrieve_by_id_fully_serialized(cls, context, id):
         record = await cls.retrieve_by_id(context, id)
         try:
-            consent = await pds_load_model(context, record.consent_id, DefinedConsent)
+            consent = await pds_load_model(context, record.consent_dri, DefinedConsent)
+            consent = consent.__dict__
         except PDSError as err:
             raise StorageError(err.roll_up)
 
-        record = record.serialize()
+        record = record.record_value
         record["consent_schema"] = consent
-        record.pop("created_at", None)
-        record.pop("updated_at", None)
-
         return record
 
 
@@ -134,5 +127,4 @@ class ServiceRecordSchema(BaseRecordSchema):
     label = fields.Str(required=True)
     service_id = fields.Str(required=True)
     service_schema_dri = fields.Str(required=True)
-    consent_id = fields.Str(required=True)
-    connection_id = fields.Str(required=True)
+    consent_dri = fields.Str(required=True)
