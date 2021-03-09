@@ -38,12 +38,19 @@ async def post_consent(request: web.BaseRequest):
     return web.json_response(result)
 
 
+async def retrieve_from_pds(request, oca_schema_dri):
+    context = request.app["request_context"]
+    try:
+        result = await pds_query_model_by_oca_schema_dri(context, oca_schema_dri)
+    except PDSError as err:
+        raise web.HTTPInternalServerError(reason=err.roll_up)
+    return result
+
+
 @docs(tags=["Consents"], summary="Get all consent definitions")
 async def get_consents(request: web.BaseRequest):
-    context = request.app["request_context"]
-
     consent_oca_schema_dri = "consent_dri"
-    result = await pds_query_model_by_oca_schema_dri(context, consent_oca_schema_dri)
+    result = await retrieve_from_pds(request, consent_oca_schema_dri)
     for i in result:
         i["oca_schema_dri"] = consent_oca_schema_dri
     return web.json_response(result)
@@ -54,15 +61,16 @@ async def get_consents(request: web.BaseRequest):
     summary="Get all the consents I have given to other people",
 )
 async def get_consents_given(request: web.BaseRequest):
-    context = request.app["request_context"]
-    try:
-        consent_give_oca_schema_dri_stub = "consent_given"
-        result = await pds_query_model_by_oca_schema_dri(
-            context, consent_give_oca_schema_dri_stub
-        )
-    except PDSError as err:
-        raise web.HTTPInternalServerError(reason=err.roll_up)
+    result = await retrieve_from_pds(request, "consent_given")
+    return web.json_response(result)
 
+
+@docs(
+    tags=["Documents"],
+    summary="Get all my consent credentials",
+)
+async def get_consents_mine(request: web.BaseRequest):
+    result = await retrieve_from_pds(request, "consent_mine")
     return web.json_response(result)
 
 
@@ -72,6 +80,11 @@ consent_routes = [
     web.get(
         "/documents/given-consents",
         get_consents_given,
+        allow_head=False,
+    ),
+    web.get(
+        "/documents/mine-consents",
+        get_consents_mine,
         allow_head=False,
     ),
 ]
