@@ -16,7 +16,7 @@ from .models import *
 from .message_types import *
 from ..models import *
 from ..consents.routes import ConsentGiven
-from ..discovery.message_types import DiscoveryServiceSchema
+from ..discovery.message_types import Discovery, DiscoveryServiceSchema
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
     retrieve_connection,
@@ -304,12 +304,38 @@ async def get_service(request: web.BaseRequest):
     return web.json_response(result)
 
 
+@docs(
+    tags=["Services"],
+    summary="Request a service list from other agent",
+    description="Reading the list requires webhook handling",
+)
+async def request_services(request: web.BaseRequest):
+    context = request.app["request_context"]
+    connection_id = request.match_info["connection_uuid"]
+    outbound_handler = request.app["outbound_message_router"]
+
+    try:
+        connection = await ConnectionRecord.retrieve_by_id(context, connection_id)
+    except StorageNotFoundError as err:
+        raise web.HTTPNotFound(reason=err)
+
+    if connection.is_ready:
+        request = Discovery()
+        await outbound_handler(request, connection_id=connection_id)
+
+        return web.json_response(
+            "Response will come async, via websocket. Response will contain ArrayOfServices model."
+        )
+
+    raise web.HTTPServiceUnavailable(reason="Connection with agent not ready")
+
+
 services_routes = [
-    # web.get(
-    #     "/connections/{connection_uuid}/services",
-    #     get_services,
-    #     allow_head=False,
-    # ),
+    web.get(
+        "/connections/{connection_uuid}/services",
+        request_services,
+        allow_head=False,
+    ),
     web.get(
         "/services",
         get_services,
