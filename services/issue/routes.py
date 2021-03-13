@@ -25,6 +25,7 @@ from ..util import *
 
 LOGGER = logging.getLogger(__name__)
 MY_SERVICE_DATA_TABLE = "my_service_data_table"
+OCA_DATA_CHUNKS = "tda.oca_chunks"
 
 
 class ApplySchema(Schema):
@@ -85,6 +86,24 @@ async def apply(request: web.BaseRequest):
     credential = await issuer.create_credential_ex(
         credential_values,
     )
+
+    service_appliance_data = service_user_data
+    if isinstance(service_appliance_data, str):
+        service_appliance_data = json.loads(service_appliance_data)
+
+    payload_key = "p"
+    for schema_dri in service_appliance_data:
+        dri = schema_dri.replace("DRI:", "")
+
+        if payload_key not in service_appliance_data[schema_dri]:
+            continue
+
+        await pds_save_a(
+            context,
+            service_appliance_data[schema_dri][payload_key],
+            oca_schema_dri=dri,
+            table=OCA_DATA_CHUNKS + "." + dri
+        )
 
     service_user_data_dri = await pds_save_a(
         context,
