@@ -1,10 +1,8 @@
 from aries_cloudagent.connections.models.connection_record import ConnectionRecord
-from aries_cloudagent.messaging.valid import UUIDFour
 from aries_cloudagent.storage.error import *
 
 from aries_cloudagent.storage.base import BaseStorage
-from aries_cloudagent.issuer.base import BaseIssuer, IssuerError
-from aries_cloudagent.holder.base import BaseHolder, HolderError
+from aries_cloudagent.issuer.base import BaseIssuer
 from aries_cloudagent.wallet.base import BaseWallet
 
 from aiohttp import web
@@ -12,10 +10,7 @@ from aiohttp_apispec import docs, request_schema, match_info_schema
 
 from marshmallow import fields, Schema
 import logging
-import hashlib
 import json
-from typing import Sequence
-from asyncio import shield
 
 from .models import *
 from .message_types import *
@@ -23,11 +18,7 @@ from ..models import *
 from ..consents.models.given_consent import ConsentGivenRecord
 from ..discovery.message_types import DiscoveryServiceSchema
 from aries_cloudagent.pdstorage_thcf.api import *
-from aries_cloudagent.protocols.issue_credential.v1_1.messages.credential_request import (
-    CredentialRequest,
-)
 from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
-    create_credential,
     retrieve_connection,
 )
 from ..util import *
@@ -73,7 +64,6 @@ async def apply(request: web.BaseRequest):
     service_label = params["service"]["label"]
 
     connection = await retrieve_connection(context, connection_id)
-    issuer: BaseIssuer = await context.inject(BaseIssuer)
 
     service_consent_match_id = str(uuid.uuid4())
 
@@ -91,10 +81,9 @@ async def apply(request: web.BaseRequest):
 
     credential_values.update(service_consent_copy)
 
-    credential = await create_credential(
-        context,
-        {"credential_values": credential_values},
-        exception=web.HTTPError,
+    issuer: BaseIssuer = await context.inject(BaseIssuer)
+    credential = await issuer.create_credential_ex(
+        credential_values,
     )
 
     service_user_data_dri = await pds_save_a(
@@ -217,19 +206,15 @@ async def process_application(request: web.BaseRequest):
     Create a service credential with values from the applicant
 
     """
-
-    credential = await create_credential(
-        context,
+    issuer: BaseIssuer = await context.inject(BaseIssuer)
+    credential = await issuer.create_credential_ex(
         {
-            "credential_values": {
-                "oca_schema_dri": service.service_schema["oca_schema_dri"],
-                "oca_schema_namespace": service.service_schema["oca_schema_namespace"],
-                "oca_data_dri": issue.service_user_data_dri,
-                "service_consent_match_id": issue.service_consent_match_id,
-            }
+            "oca_schema_dri": service.service_schema["oca_schema_dri"],
+            "oca_schema_namespace": service.service_schema["oca_schema_namespace"],
+            "oca_data_dri": issue.service_user_data_dri,
+            "service_consent_match_id": issue.service_consent_match_id,
         },
-        their_public_did=issue.their_public_did,
-        exception=web.HTTPError,
+        subject_public_did=issue.their_public_did,
     )
 
     issue.state = ServiceIssueRecord.ISSUE_ACCEPTED
