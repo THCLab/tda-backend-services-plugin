@@ -43,7 +43,7 @@ class DiscoveryHandler(BaseHandler):
         await responder.send_reply(response)
 
 
-class DiscoveryResponseHandler(BaseHandler):
+class DiscoveryResponseHandler(BaseHandler):    
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, DiscoveryResponse)
         connection_id = context.connection_record.connection_id
