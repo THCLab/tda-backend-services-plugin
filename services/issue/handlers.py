@@ -81,32 +81,11 @@ class ApplicationHandler(BaseHandler):
         Verify consent against these three vars from service requirements
 
         """
-        namespace = service["consent_schema"]["oca_schema_namespace"]
-        oca_dri = service["consent_schema"]["oca_schema_dri"]
-        data_dri = service["consent_schema"]["oca_data_dri"]
+        data_dri = service["consent_dri"]
         cred_content = consent["credentialSubject"]
 
-        is_malformed = (
-            cred_content["oca_data_dri"] != data_dri
-            or cred_content["oca_schema_namespace"] != namespace
-            or cred_content["oca_schema_dri"] != oca_dri
-        )
-
-        """
-        Verify usage policy
-        """
-
-        # usage_policy_message = await verify_usage_policy(
-        #     service["consent_schema"]["usage_policy"],
-        #     consent["credentialSubject"]["usage_policy"],
-        # )
-        # if usage_policy_message.find("policies match") == -1:
-        #     LOGGER.error("Policies dont match! %s", usage_policy_message)
-        #     is_malformed = true
-
-        """
-
-        """
+        print(cred_content)
+        is_malformed = cred_content["oca_data_dri"] != data_dri
 
         if is_malformed:
             await send_confirmation(
@@ -119,8 +98,6 @@ class ApplicationHandler(BaseHandler):
                 f"Ismalformed? {is_malformed} Incoming consent"
                 f"credential doesn't match with service consent credential"
                 f"Conditions: data dri {cred_content['oca_data_dri'] != data_dri} "
-                f"namespace {cred_content['oca_schema_namespace'] != namespace} "
-                f"oca_dri {cred_content['oca_schema_dri'] != oca_dri}"
             )
 
         if not await verify_proof(wallet, consent):
@@ -134,16 +111,9 @@ class ApplicationHandler(BaseHandler):
                 f"Credential failed the verification process {consent}"
             )
 
-        """
-
-        Pack save confirm
-
-        """
-
         user_data_dri = await pds_save(
             context,
             context.message.service_user_data,
-            oca_dri,
         )
         assert user_data_dri == context.message.service_user_data_dri
 

@@ -83,7 +83,7 @@ class ServiceRecord(BaseRecord):
 
         result = []
         for current in query:
-            record = current.serialize()
+            record = current.record_value
             try:
                 record["consent_schema"] = await pds_load(
                     context, record["consent_dri"]

@@ -1,30 +1,15 @@
-# Acapy
 from aries_cloudagent.messaging.base_handler import (
     BaseHandler,
     BaseResponder,
     RequestContext,
 )
 from aries_cloudagent.storage.base import BaseStorage
-from aries_cloudagent.config.injection_context import InjectionContext
-
-# Records, messages and schemas
 from aries_cloudagent.storage.record import StorageRecord
-
-# Exceptions
-from aries_cloudagent.storage.error import (
-    StorageNotFoundError,
-    StorageError,
-)
-
-# Internal
+from aries_cloudagent.storage.error import StorageError
 from ..models import *
 from .message_types import *
-
-# External
-from marshmallow import fields
 import json
 import logging
-
 from ..util import verify_usage_policy
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.aathcf.utils import debug_handler
@@ -43,17 +28,12 @@ class DiscoveryHandler(BaseHandler):
         await responder.send_reply(response)
 
 
-class DiscoveryResponseHandler(BaseHandler):    
+class DiscoveryResponseHandler(BaseHandler):
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, DiscoveryResponse)
         connection_id = context.connection_record.connection_id
 
         services = context.message.services
-        for i in services:
-            i.pop("created_at", None)
-            i.pop("updated_at", None)
-            i.pop("consent_dri", None)
-
         storage: BaseStorage = await context.inject(BaseStorage)
         services_serialized = json.dumps(services)
 
@@ -76,7 +56,7 @@ class DiscoveryResponseHandler(BaseHandler):
             LOGGER.info("ADD RECORD %s", record)
 
         await responder.send_webhook(
-            "verifiable-services/request-service-list",
+            "services/request-service-list",
             {"connection_id": connection_id, "services": services},
         )
 
@@ -90,6 +70,6 @@ class DiscoveryResponseHandler(BaseHandler):
                     i["consent_schema"]["usage_policy"], usage_policy
                 )
                 await responder.send_webhook(
-                    "verifiable-services/request-service-list/usage-policy",
+                    "services/request-service-list/usage-policy",
                     result,
                 )

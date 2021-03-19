@@ -3,6 +3,7 @@ from aries_cloudagent.storage.error import *
 
 from aries_cloudagent.storage.base import BaseStorage
 from aries_cloudagent.issuer.base import BaseIssuer, IssuerError
+from aries_cloudagent.storage.record import StorageRecord
 from aries_cloudagent.wallet.base import BaseWallet
 
 from aiohttp import web
@@ -45,43 +46,62 @@ async def get_public_did(context):
     return public_did
 
 
+async def seek_other_agent_service(storage, connection_id, service_id):
+    search = storage.search_records("service_list", {"connection_id": connection_id})
+    await search.open()
+    try:
+        records = await search.fetch_single()
+    except StorageNotFoundError:
+        return web.json_response(
+            "Service, pointed by connection_uuid and service_uuid, not found",
+            status=404,
+        )
+    await search.close()
+
+    records = json.loads(records.value)
+
+    seek = None  # seek record
+    for i in records:
+        print(i)
+        if i["service_uuid"] == service_id:
+            seek = i
+
+    if seek is None:
+        return web.json_response(
+            "Service, pointed by connection_uuid and service_uuid, not found",
+            status=404,
+        )
+    return seek
+
+
 @docs(
     tags=["Verifiable Services"],
     summary="Apply to a service that connected agent provides",
 )
-@request_schema(ApplySchema())
+@request_schema(Model.NewApplication)
 async def apply(request: web.BaseRequest):
     context = request.app["request_context"]
     outbound_handler = request.app["outbound_message_router"]
 
     params = await request.json()
-    connection_id = params["connection_id"]
+    connection_id = params["connection_uuid"]
     service_user_data = params["user_data"]
-    service_id = params["service"]["service_id"]
-
-    # service consent and service to check for correctness
-    service_consent_schema = params["service"]["consent_schema"]
-    service_schema = params["service"]["service_schema"]
-    service_label = params["service"]["label"]
+    service_id = params["service_uuid"]
 
     connection = await retrieve_connection(context, connection_id)
     issuer: BaseIssuer = await context.inject(BaseIssuer)
-
+    storage: BaseStorage = await context.inject(BaseStorage)
     service_consent_match_id = str(uuid.uuid4())
+    seek = await seek_other_agent_service(storage, connection_id, service_id)
 
-    """
-
-    Pop the usage policy of service provider and bring our policy to
-    credential
-
-    """
-    service_consent_copy = service_consent_schema.copy()
+    service_consent_copy = seek["consent_schema"].copy()
     service_consent_copy.pop("oca_data", None)
-    usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
     credential_values = {"service_consent_match_id": service_consent_match_id}
-    credential_values["usage_policy"] = usage_policy
-
     credential_values.update(service_consent_copy)
+
+    usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
+    if usage_policy:
+        credential_values["usage_policy"] = usage_policy
 
     try:
         issuer: BaseIssuer = await context.inject(BaseIssuer)
@@ -90,23 +110,23 @@ async def apply(request: web.BaseRequest):
         )
     except IssuerError as err:
         raise web.HTTPInternalServerError(
-            reason=f"Error occured while creating a credential {err.roll_up}"
+            reason=f"Error occured while creating a credential [{err.roll_up}]"
         )
 
     service_user_data_dri = await pds_save(
         context,
         service_user_data,
-        oca_schema_dri=service_schema["oca_schema_dri"],
+        oca_schema_dri=seek["service_schema_dri"],
     )
 
     record = ServiceIssueRecord(
         connection_id=connection_id,
         state=ServiceIssueRecord.ISSUE_WAITING_FOR_RESPONSE,
         author=ServiceIssueRecord.AUTHOR_SELF,
-        label=service_label,
-        service_consent_schema=service_consent_schema,
+        label=seek["label"],
+        service_consent_schema=seek["consent_schema"],
         service_id=service_id,
-        service_schema=service_schema,
+        service_schema=seek["service_schema_dri"],
         service_user_data_dri=service_user_data_dri,
         service_consent_match_id=service_consent_match_id,
     )
@@ -135,17 +155,22 @@ async def apply(request: web.BaseRequest):
     )
     await outbound_handler(request, connection_id=connection_id)
 
-    """
-
-    Record the given credential
-
-    """
-
+    # record the given credential
     consent_give_oca_schema_dri_stub = "consent_given"
     consent_given = ConsentGiven(credential, connection_id)
     await pds_save_model(context, consent_given, consent_give_oca_schema_dri_stub)
 
-    return web.json_response({"success": True, "exchange_id": record.exchange_id})
+    record.service_consent_schema.pop("usage_policy")
+    record.service_consent_schema["dri"] = seek["consent_dri"]
+    result = {
+        "connection_uuid": record.connection_id,
+        "appliance_uuid": record._id,
+        "service_uuid": record.service_id,
+        "consent": record.service_consent_schema,
+        "service": record.service_schema,
+        "service_user_data": service_user_data,
+    }
+    return web.json_response(result)
 
 
 async def send_confirmation(outbound_handler, connection_id, exchange_id, state):
@@ -185,7 +210,7 @@ async def process_application(request: web.BaseRequest):
     connection: ConnectionRecord = await retrieve_connection(context, connection_id)
 
     """
-
+    
     Users can decide to reject the application
 
     """
@@ -350,7 +375,7 @@ services_routes = [
         "/services/add",
         add_service,
     ),
-    web.post("/verifiable-services/apply", apply),
+    web.post("/services/apply", apply),
     web.post(
         "/verifiable-services/process-application",
         process_application,
