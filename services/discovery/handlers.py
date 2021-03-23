@@ -21,6 +21,7 @@ from aries_cloudagent.storage.error import (
     StorageError,
 )
 from aries_cloudagent.protocols.problem_report.v1_0.message import ProblemReport
+from aries_cloudagent.protocols.present_proof.v1_1.routes import verify_usage_policy
 
 # Internal
 from ..models import *
@@ -34,7 +35,6 @@ import uuid
 import json
 import logging
 
-from ..util import verify_usage_policy
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.aathcf.utils import debug_handler
 
@@ -99,11 +99,12 @@ class DiscoveryResponseHandler(BaseHandler):
         if usage_policy:
             for i in services:
                 result = {}
-                result[i["service_id"]] = await verify_usage_policy(
+                result[i["service_id"]], _ = await verify_usage_policy(
                     i["consent_schema"]["usage_policy"], usage_policy
                 )
                 await responder.send_webhook(
-                    "verifiable-services/request-service-list/usage-policy", result,
+                    "verifiable-services/request-service-list/usage-policy",
+                    result,
                 )
 
 
@@ -149,7 +150,8 @@ class DEBUGServiceDiscoveryRecord(BaseRecord):
         cls, context: InjectionContext, connection_id: str
     ):
         return await cls.retrieve_by_tag_filter(
-            context, {"connection_id": connection_id},
+            context,
+            {"connection_id": connection_id},
         )
 
 
@@ -186,7 +188,8 @@ class DEBUGDiscoveryResponseHandler(BaseHandler):
             record.services = services
         except StorageNotFoundError:
             record: DEBUGServiceDiscoveryRecord = DEBUGServiceDiscoveryRecord(
-                services=services, connection_id=connection_id,
+                services=services,
+                connection_id=connection_id,
             )
 
         await record.save(context)

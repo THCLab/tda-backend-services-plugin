@@ -6,33 +6,25 @@ from aries_cloudagent.messaging.base_handler import (
     HandlerException,
 )
 from aries_cloudagent.wallet.base import BaseWallet
-from aries_cloudagent.verifier.base import BaseVerifier
 from aries_cloudagent.holder.base import HolderError, BaseHolder
 from aries_cloudagent.aathcf.credentials import verify_proof
 
 # Exceptions
-from aries_cloudagent.storage.error import StorageDuplicateError, StorageNotFoundError
-from aries_cloudagent.protocols.problem_report.v1_0.message import ProblemReport
+from aries_cloudagent.storage.error import StorageNotFoundError
 
 
 # Internal
-from ..util import generate_model_schema
 from .message_types import *
 from .models import ServiceIssueRecord
 from ..models import ServiceRecord
 
 # External
-from asyncio import shield
-from marshmallow import fields, Schema
 from collections import OrderedDict
 import logging
-import hashlib
-import uuid
 import json
 
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.aathcf.utils import debug_handler
-from ..util import verify_usage_policy
 
 LOGGER = logging.getLogger(__name__)
 SERVICE_USER_DATA_TABLE = "service_user_data_table"
@@ -45,7 +37,10 @@ async def send_confirmation(context, responder, exchange_id, state=None):
     """
 
     LOGGER.info("send confirmation %s", state)
-    confirmation = Confirmation(exchange_id=exchange_id, state=state,)
+    confirmation = Confirmation(
+        exchange_id=exchange_id,
+        state=state,
+    )
 
     confirmation.assign_thread_from(context.message)
     await responder.send_reply(confirmation)
@@ -95,22 +90,6 @@ class ApplicationHandler(BaseHandler):
             or cred_content["oca_schema_namespace"] != namespace
             or cred_content["oca_schema_dri"] != oca_dri
         )
-
-        """
-        Verify usage policy
-        """
-
-        # usage_policy_message = await verify_usage_policy(
-        #     service["consent_schema"]["usage_policy"],
-        #     consent["credentialSubject"]["usage_policy"],
-        # )
-        # if usage_policy_message.find("policies match") == -1:
-        #     LOGGER.error("Policies dont match! %s", usage_policy_message)
-        #     is_malformed = true
-
-        """
-
-        """
 
         if is_malformed:
             await send_confirmation(
@@ -179,7 +158,10 @@ class ApplicationHandler(BaseHandler):
 
         await responder.send_webhook(
             "verifiable-services/incoming-pending-application",
-            {"issue": issue.serialize(), "issue_id": issue_id,},
+            {
+                "issue": issue.serialize(),
+                "issue_id": issue_id,
+            },
         )
 
 
@@ -255,7 +237,10 @@ class ApplicationResponseHandler(BaseHandler):
 
         await responder.send_webhook(
             "verifiable-services/credential-received",
-            {"credential_id": credential_id, "connection_id": responder.connection_id,},
+            {
+                "credential_id": credential_id,
+                "connection_id": responder.connection_id,
+            },
         )
 
 

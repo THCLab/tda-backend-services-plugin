@@ -22,6 +22,7 @@ from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
     retrieve_connection,
 )
 from ..util import *
+from aries_cloudagent.protocols.present_proof.v1_1.routes import verify_usage_policy
 
 LOGGER = logging.getLogger(__name__)
 MY_SERVICE_DATA_TABLE = "my_service_data_table"
@@ -102,7 +103,7 @@ async def apply(request: web.BaseRequest):
             context,
             service_appliance_data[schema_dri][payload_key],
             oca_schema_dri=dri,
-            table=OCA_DATA_CHUNKS + "." + dri
+            table=OCA_DATA_CHUNKS + "." + dri,
         )
 
     service_user_data_dri = await pds_save_a(
@@ -298,7 +299,7 @@ async def serialize_and_verify_service_issue(context, issue):
             if consent_data.get("usage_policy") is not None:
                 if issue.author == ServiceIssueRecord.AUTHOR_OTHER:
                     cred = await issue.user_consent_credential_pds_get(context)
-                    record["usage_policies_match"] = await verify_usage_policy(
+                    record["usage_policies_match"], _ = await verify_usage_policy(
                         cred["credentialSubject"]["usage_policy"],
                         consent_data["usage_policy"],
                     )
