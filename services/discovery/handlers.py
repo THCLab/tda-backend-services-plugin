@@ -10,8 +10,8 @@ from ..models import *
 from .message_types import *
 import json
 import logging
-from ..util import verify_usage_policy
-from aries_cloudagent.pdstorage_thcf.api import *
+
+from aries_cloudagent.pdstorage_thcf.api import oyd_verify_usage_policy
 from aries_cloudagent.aathcf.utils import debug_handler
 
 LOGGER = logging.getLogger(__name__)
@@ -23,6 +23,7 @@ class DiscoveryHandler(BaseHandler):
 
         usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
         records = await ServiceRecord.query_fully_serialized(context)
+        print("SERVICES Send", records)
         response = DiscoveryResponse(services=records, usage_policy=usage_policy)
         response.assign_thread_from(context.message)
         await responder.send_reply(response)
@@ -36,7 +37,7 @@ class DiscoveryResponseHandler(BaseHandler):
         services = context.message.services
         storage: BaseStorage = await context.inject(BaseStorage)
         services_serialized = json.dumps(services)
-
+        print("SERVICES Recv", services)
         """
         Check if service list from agent exists. If it exists overwrite it with new version, 
         else create and save a service list
@@ -66,7 +67,7 @@ class DiscoveryResponseHandler(BaseHandler):
         if usage_policy:
             for i in services:
                 result = {}
-                result[i["service_id"]] = await verify_usage_policy(
+                result[i["service_id"]], _ = await oyd_verify_usage_policy(
                     i["consent_schema"]["usage_policy"], usage_policy
                 )
                 await responder.send_webhook(

@@ -24,6 +24,7 @@ from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
 )
 from ..util import *
 import aries_cloudagent.generated_models as Model
+from aries_cloudagent.aathcf.utils import build_pds_context
 
 
 LOGGER = logging.getLogger(__name__)
@@ -48,17 +49,20 @@ async def get_public_did(context):
 
 async def seek_other_agent_service(storage, connection_id, service_id):
     search = storage.search_records("service_list", {"connection_id": connection_id})
+    print(search)
     await search.open()
+
     try:
         records = await search.fetch_single()
+        print(records)
     except StorageNotFoundError:
-        return web.json_response(
-            "Service, pointed by connection_uuid and service_uuid, not found",
-            status=404,
+        raise web.HTTPNotFound(
+            reason="Service, pointed by connection_uuid, not found",
         )
     await search.close()
 
     records = json.loads(records.value)
+    print(records)
 
     seek = None  # seek record
     for i in records:
@@ -67,9 +71,8 @@ async def seek_other_agent_service(storage, connection_id, service_id):
             seek = i
 
     if seek is None:
-        return web.json_response(
-            "Service, pointed by connection_uuid and service_uuid, not found",
-            status=404,
+        raise web.HTTPNotFound(
+            reason="Service, pointed by connection_uuid and service_uuid, not found",
         )
     return seek
 
@@ -94,6 +97,7 @@ async def apply(request: web.BaseRequest):
     service_consent_match_id = str(uuid.uuid4())
     seek = await seek_other_agent_service(storage, connection_id, service_id)
 
+    print(seek)
     service_consent_copy = seek["consent_schema"].copy()
     service_consent_copy.pop("oca_data", None)
     credential_values = {"service_consent_match_id": service_consent_match_id}
@@ -273,8 +277,6 @@ async def add_service(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
     consent_id = body.get("consent_dri")
-    if __debug__:
-        assert consent_id is not None
 
     try:
         await pds_load_model(context, consent_id, DefinedConsent)
@@ -293,6 +295,20 @@ async def add_service(request: web.BaseRequest):
     result["service_uuid"] = uuid
 
     return web.json_response(result, status=201)
+
+
+async def add_service_(consent_id):
+    if __debug__:
+        assert consent_id is not None
+    context, pds = await build_pds_context()
+    result = await pds_load(context, "1234")
+
+
+async def main():
+    await add_service_("1234")
+
+
+run_standalone_async(__name__, main)
 
 
 @docs(
