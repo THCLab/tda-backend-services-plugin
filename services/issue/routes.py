@@ -16,7 +16,7 @@ import json
 from .models import *
 from .message_types import *
 from ..models import *
-from ..consents.routes import ConsentGiven
+from ..consents.routes import ConsentGiven, add_consent
 from ..discovery.message_types import Discovery, DiscoveryServiceSchema
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
@@ -25,6 +25,7 @@ from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
 from ..util import *
 import aries_cloudagent.generated_models as Model
 from aries_cloudagent.aathcf.utils import build_pds_context
+from aries_cloudagent.config.global_variables import CONSENT_GIVEN_DRI
 
 
 LOGGER = logging.getLogger(__name__)
@@ -159,10 +160,10 @@ async def apply(request: web.BaseRequest):
     )
     await outbound_handler(request, connection_id=connection_id)
 
-    # record the given credential
-    consent_give_oca_schema_dri_stub = "consent_given"
-    consent_given = ConsentGiven(credential, connection_id)
-    await pds_save_model(context, consent_given, consent_give_oca_schema_dri_stub)
+    consent_given = ConsentGiven(
+        credential, connection_id, oca_schema_dri=CONSENT_GIVEN_DRI
+    )
+    await consent_given.save(context)
 
     record.service_consent_schema.pop("usage_policy")
     record.service_consent_schema["dri"] = seek["consent_dri"]
@@ -279,7 +280,7 @@ async def add_service(request: web.BaseRequest):
     consent_id = body.get("consent_dri")
 
     try:
-        await pds_load_model(context, consent_id, DefinedConsent)
+        await DefinedConsent.load(context, consent_id)
     except PDSError as err:
         return web.json_response(status=404, text="Consent not found - " + err.roll_up)
 
@@ -300,8 +301,10 @@ async def add_service(request: web.BaseRequest):
 async def add_service_(consent_id):
     if __debug__:
         assert consent_id is not None
-    context, pds = await build_pds_context()
-    result = await pds_load(context, "1234")
+    context = await build_pds_context()
+    consent = await add_consent(context, "asd", {}, "test_consent_dri")
+    result = await DefinedConsent.load(context, consent.dri)
+    print(result.__dict__)
 
 
 async def main():

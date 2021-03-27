@@ -110,8 +110,7 @@ class ServiceRecord(BaseRecord):
     async def retrieve_by_id_fully_serialized(cls, context, id):
         record = await cls.retrieve_by_id(context, id)
         try:
-            consent = await pds_load_model(context, record.consent_dri, DefinedConsent)
-            consent = consent.__dict__
+            consent = await pds_load(context, record.consent_dri)
         except PDSError as err:
             raise StorageError(err.roll_up)
 
