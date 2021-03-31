@@ -85,9 +85,8 @@ class ServiceRecord(BaseRecord):
         for current in query:
             record = current.record_value
             try:
-                record["consent_schema"] = await pds_load(
-                    context, record["consent_dri"]
-                )
+                qu = await DefinedConsent.load(context, record["consent_dri"])
+                record["consent_schema"] = qu.serialize()
             except PDSError as err:
                 if skip_invalid:
                     LOGGER.warn(

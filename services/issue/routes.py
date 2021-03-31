@@ -1,3 +1,4 @@
+from aiohttp_apispec.decorators import response
 from ..discovery.handlers import cache_requested_services
 from aries_cloudagent.connections.models.connection_record import ConnectionRecord
 from aries_cloudagent.storage.error import *
@@ -7,7 +8,7 @@ from aries_cloudagent.issuer.base import BaseIssuer, IssuerError
 from aries_cloudagent.wallet.base import BaseWallet
 
 from aiohttp import web
-from aiohttp_apispec import docs, request_schema
+from aiohttp_apispec import docs, request_schema, response_schema
 
 from marshmallow import fields, Schema
 import logging
@@ -55,12 +56,10 @@ async def get_public_did(context):
 
 async def seek_other_agent_service(storage, connection_id, service_id):
     search = storage.search_records("service_list", {"connection_id": connection_id})
-    print(search)
     await search.open()
 
     try:
         records = await search.fetch_single()
-        print(records)
     except StorageNotFoundError:
         raise web.HTTPNotFound(
             reason="Service, pointed by connection_uuid, not found",
@@ -68,11 +67,9 @@ async def seek_other_agent_service(storage, connection_id, service_id):
     await search.close()
 
     records = json.loads(records.value)
-    print(records)
 
     seek = None  # seek record
     for i in records:
-        print(i)
         if i["service_uuid"] == service_id:
             seek = i
 
@@ -83,27 +80,13 @@ async def seek_other_agent_service(storage, connection_id, service_id):
     return seek
 
 
-@docs(
-    tags=["Verifiable Services"],
-    summary="Apply to a service that connected agent provides",
-)
-@request_schema(Model.NewApplication)
-async def apply_endpoint(request: web.BaseRequest):
-    context = request.app["request_context"]
-    outbound_handler = request.app["outbound_message_router"]
-
-    params = await request.json()
-    connection_id = params["connection_uuid"]
-    service_user_data = params["user_data"]
-    service_id = params["service_uuid"]
-
-    connection = await retrieve_connection(context, connection_id)
+async def apply(context, connection_id, service_id, service_user_data):
+    await retrieve_connection(context, connection_id)
     issuer: BaseIssuer = await context.inject(BaseIssuer)
     storage: BaseStorage = await context.inject(BaseStorage)
     service_consent_match_id = str(uuid.uuid4())
     seek = await seek_other_agent_service(storage, connection_id, service_id)
 
-    print(seek)
     service_consent_copy = seek["consent_schema"].copy()
     service_consent_copy.pop("oca_data", None)
     credential_values = {"service_consent_match_id": service_consent_match_id}
@@ -129,6 +112,7 @@ async def apply_endpoint(request: web.BaseRequest):
         oca_schema_dri=seek["service_schema_dri"],
     )
 
+    seek["consent_schema"]["consent_schema_dri"] = seek["consent_dri"]
     record = ServiceIssueRecord(
         connection_id=connection_id,
         state=ServiceIssueRecord.ISSUE_WAITING_FOR_RESPONSE,
@@ -136,13 +120,14 @@ async def apply_endpoint(request: web.BaseRequest):
         label=seek["label"],
         service_consent_schema=seek["consent_schema"],
         service_id=service_id,
-        service_schema=seek["service_schema_dri"],
+        service_schema={
+            "oca_schema_dri": seek["service_schema_dri"],
+            "consent_dri": seek["consent_dri"],
+        },
         service_user_data_dri=service_user_data_dri,
         service_consent_match_id=service_consent_match_id,
     )
-
     await record.save(context)
-
     """ 
     service_user_data_dri - is here so that in the future it would be easier
     to not send the service_user_data, because from what I understand we only
@@ -152,8 +137,8 @@ async def apply_endpoint(request: web.BaseRequest):
     when I store the data in other's agent PDS
 
     """
-    public_did = await get_public_did(context)
 
+    public_did = await get_public_did(context)
     request = Application(
         service_id=record.service_id,
         exchange_id=record.exchange_id,
@@ -163,22 +148,41 @@ async def apply_endpoint(request: web.BaseRequest):
         consent_credential=credential,
         public_did=public_did,
     )
-    await outbound_handler(request, connection_id=connection_id)
 
     consent_given = ConsentGiven(
         credential, connection_id, oca_schema_dri=CONSENT_GIVEN_DRI
     )
     await consent_given.save(context)
 
-    record.service_consent_schema.pop("usage_policy")
-    record.service_consent_schema["dri"] = seek["consent_dri"]
+    return request, record
+
+
+@docs(
+    tags=["Verifiable Services"],
+    summary="Apply to a service that connected agent provides",
+)
+@response_schema(Model.MineApplication)
+@request_schema(Model.NewApplication)
+async def apply_endpoint(request: web.BaseRequest):
+    context = request.app["request_context"]
+    outbound_handler = request.app["outbound_message_router"]
+
+    params = await request.json()
+    connection_id = params["connection_uuid"]
+    user_data = params["user_data"]
+    service_id = params["service_uuid"]
+
+    request, record = await apply(context, connection_id, service_id, user_data)
+    await outbound_handler(request, connection_id=connection_id)
+
+    record.service_consent_schema.pop("usage_policy", None)
     result = {
         "connection_uuid": record.connection_id,
         "appliance_uuid": record._id,
         "service_uuid": record.service_id,
         "consent": record.service_consent_schema,
         "service": record.service_schema,
-        "service_user_data": service_user_data,
+        "service_user_data": user_data,
     }
     return web.json_response(result)
 
@@ -186,6 +190,34 @@ async def apply_endpoint(request: web.BaseRequest):
 async def send_confirmation(outbound_handler, connection_id, exchange_id, state):
     confirmation = Confirmation(exchange_id=exchange_id, state=state)
     await outbound_handler(confirmation, connection_id=connection_id)
+
+
+async def test_apply():
+    context = await build_context("local")
+    consent = await add_consent(context, "asd", {"test_apply": "a"}, "test_consent_dri")
+    service = await add_service(context, "test_", "test_apply", consent.dri)
+    connect = await add_connection(context)
+    services = await service.query_fully_serialized(context)
+
+    await cache_requested_services(context, connect._id, json.dumps(services))
+    await create_public_did(context)
+
+    user_data = {"user_data": "cool_data"}
+    apply_res = await call_endpoint_validate(
+        apply_endpoint,
+        build_request_stub(
+            context,
+            {
+                "user_data": user_data,
+                "service_uuid": service._id,
+                "connection_uuid": connect._id,
+            },
+        ),
+    )
+    apply_res = json.loads(apply_res.body)
+    assert apply_res["connection_uuid"] == connect._id
+    assert apply_res["service_uuid"] == service._id
+    assert apply_res["service_user_data"] == user_data
 
 
 class ProcessApplicationSchema(Schema):
@@ -294,8 +326,21 @@ async def add_service(context, label, service_schema_dri, consent_dri):
     return service_record
 
 
+async def add_connection(context):
+    result = ConnectionRecord()
+    result.state = result.STATE_ACTIVE
+    await result.save(context)
+    return result
+
+
+async def create_public_did(context):
+    wallet: BaseWallet = await context.inject(BaseWallet)
+    await wallet.create_public_did()
+
+
 @docs(tags=["Services"], summary="Add a verifiable service")
 @request_schema(Model.BaseService)
+@response_schema(Model.Service, code=201)
 async def add_service_endpoint(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
@@ -311,46 +356,10 @@ async def add_service_endpoint(request: web.BaseRequest):
     return web.json_response(result, status=201)
 
 
-async def test_apply():
-    context = await build_context("local")
-    consent = await add_consent(context, "asd", {}, "test_consent_dri")
-    service = await call_endpoint_validate(
-        add_service_endpoint,
-        build_request_stub(
-            context,
-            {
-                "consent_dri": consent.dri,
-                "label": "TestService",
-                "service_schema_dri": "12345",
-            },
-        ),
-    )
-    service = json.loads(service.body.decode("utf-8"))
-
-    new_connection = ConnectionRecord()
-    new_connection.state = new_connection.STATE_ACTIVE
-    conn_id = await new_connection.save(context)
-    print(service)
-    await cache_requested_services(context, conn_id, json.dumps([service]))
-
-    apply_res = await call_endpoint_validate(
-        apply_endpoint,
-        build_request_stub(
-            context,
-            {
-                "user_data": {"user_data": "cool_data"},
-                "service_uuid": service["service_uuid"],
-                "connection_uuid": conn_id,
-            },
-        ),
-    )
-    print(apply_res.body)
-
-
 async def test_add_service_endpoint():
     context = await build_context("local")
     consent = await add_consent(context, "asd", {}, "test_consent_dri")
-    service = await call_endpoint_validate(
+    await call_endpoint_validate(
         add_service_endpoint,
         build_request_stub(
             context,
@@ -364,8 +373,8 @@ async def test_add_service_endpoint():
 
 
 async def main():
-    await test_add_service_endpoint()
     await test_apply()
+    await test_add_service_endpoint()
 
 
 run_standalone_async(__name__, main)
