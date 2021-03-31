@@ -23,38 +23,37 @@ class DiscoveryHandler(BaseHandler):
 
         usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
         records = await ServiceRecord.query_fully_serialized(context)
-        print("SERVICES Send", records)
         response = DiscoveryResponse(services=records, usage_policy=usage_policy)
         response.assign_thread_from(context.message)
         await responder.send_reply(response)
 
 
+async def cache_requested_services(context, connection_id, services_serialized):
+    """
+    Check if service list from agent exists. If it exists overwrite it with new version,
+    else create and save a service list
+    """
+    storage: BaseStorage = await context.inject(BaseStorage)
+    try:
+        query = storage.search_records("service_list", {"connection_id": connection_id})
+        query = await query.fetch_single()
+        await storage.update_record_value(query, services_serialized)
+        LOGGER.info("QUERY %s", query)
+    except StorageError:
+        record = StorageRecord(
+            "service_list", services_serialized, {"connection_id": connection_id}
+        )
+        await storage.add_record(record)
+        LOGGER.info("ADD RECORD %s", record)
+
+
 class DiscoveryResponseHandler(BaseHandler):
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, DiscoveryResponse)
-        connection_id = context.connection_record.connection_id
-
+        connection_id = responder.connection_id
         services = context.message.services
-        storage: BaseStorage = await context.inject(BaseStorage)
         services_serialized = json.dumps(services)
-        print("SERVICES Recv", services)
-        """
-        Check if service list from agent exists. If it exists overwrite it with new version, 
-        else create and save a service list
-        """
-        try:
-            query = storage.search_records(
-                "service_list", {"connection_id": connection_id}
-            )
-            query = await query.fetch_single()
-            await storage.update_record_value(query, services_serialized)
-            LOGGER.info("QUERY %s", query)
-        except StorageError:
-            record = StorageRecord(
-                "service_list", services_serialized, {"connection_id": connection_id}
-            )
-            await storage.add_record(record)
-            LOGGER.info("ADD RECORD %s", record)
+        await cache_requested_services(context, connection_id, services_serialized)
 
         await responder.send_webhook(
             "services/request-service-list",

@@ -1,13 +1,13 @@
+from ..discovery.handlers import cache_requested_services
 from aries_cloudagent.connections.models.connection_record import ConnectionRecord
 from aries_cloudagent.storage.error import *
 
 from aries_cloudagent.storage.base import BaseStorage
 from aries_cloudagent.issuer.base import BaseIssuer, IssuerError
-from aries_cloudagent.storage.record import StorageRecord
 from aries_cloudagent.wallet.base import BaseWallet
 
 from aiohttp import web
-from aiohttp_apispec import docs, request_schema, match_info_schema, querystring_schema
+from aiohttp_apispec import docs, request_schema
 
 from marshmallow import fields, Schema
 import logging
@@ -24,7 +24,12 @@ from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
 )
 from ..util import *
 import aries_cloudagent.generated_models as Model
-from aries_cloudagent.aathcf.utils import build_pds_context
+from aries_cloudagent.aathcf.utils import (
+    build_context,
+    build_request_stub,
+    validate_endpoint_output,
+    call_endpoint_validate,
+)
 from aries_cloudagent.config.global_variables import CONSENT_GIVEN_DRI
 
 
@@ -83,7 +88,7 @@ async def seek_other_agent_service(storage, connection_id, service_id):
     summary="Apply to a service that connected agent provides",
 )
 @request_schema(Model.NewApplication)
-async def apply(request: web.BaseRequest):
+async def apply_endpoint(request: web.BaseRequest):
     context = request.app["request_context"]
     outbound_handler = request.app["outbound_message_router"]
 
@@ -201,7 +206,7 @@ class ProcessApplicationSchema(Schema):
     """,
 )
 @request_schema(ProcessApplicationSchema())
-async def process_application(request: web.BaseRequest):
+async def process_application_endpoint(request: web.BaseRequest):
     outbound_handler = request.app["outbound_message_router"]
     context = request.app["request_context"]
     params = await request.json()
@@ -253,6 +258,7 @@ async def process_application(request: web.BaseRequest):
             },
             subject_public_did=issue.their_public_did,
         )
+        print("\n\nCREDENTIAL", credential)
     except IssuerError as err:
         raise web.HTTPInternalServerError(
             reason=f"Error occured while creating a credential {err.roll_up}"
@@ -272,43 +278,94 @@ async def process_application(request: web.BaseRequest):
     )
 
 
-@docs(tags=["Services"], summary="Add a verifiable service")
-@request_schema(Model.BaseService)
-async def add_service(request: web.BaseRequest):
-    context = request.app["request_context"]
-    body = await request.json()
-    consent_id = body.get("consent_dri")
-
+async def add_service(context, label, service_schema_dri, consent_dri):
     try:
-        await DefinedConsent.load(context, consent_id)
+        await DefinedConsent.load(context, consent_dri)
     except PDSError as err:
         return web.json_response(status=404, text="Consent not found - " + err.roll_up)
 
     service_record = ServiceRecord(
-        label=body["label"],
-        service_schema_dri=body["service_schema_dri"],
-        consent_dri=consent_id,
+        label=label,
+        service_schema_dri=service_schema_dri,
+        consent_dri=consent_dri,
     )
 
-    uuid = await service_record.save(context)
+    await service_record.save(context)
+    return service_record
 
-    result = service_record.serialize()
-    result["service_uuid"] = uuid
+
+@docs(tags=["Services"], summary="Add a verifiable service")
+@request_schema(Model.BaseService)
+async def add_service_endpoint(request: web.BaseRequest):
+    context = request.app["request_context"]
+    body = await request.json()
+    consent_id = body.get("consent_dri")
+    LOGGER.info("add_service_endpoint endpoint, body: %s", body)
+    rec = await add_service(
+        context, body["label"], body["service_schema_dri"], consent_id
+    )
+
+    result = rec.serialize()
+    result["service_uuid"] = rec._id
 
     return web.json_response(result, status=201)
 
 
-async def add_service_(consent_id):
-    if __debug__:
-        assert consent_id is not None
-    context = await build_pds_context()
+async def test_apply():
+    context = await build_context("local")
     consent = await add_consent(context, "asd", {}, "test_consent_dri")
-    result = await DefinedConsent.load(context, consent.dri)
-    print(result.__dict__)
+    service = await call_endpoint_validate(
+        add_service_endpoint,
+        build_request_stub(
+            context,
+            {
+                "consent_dri": consent.dri,
+                "label": "TestService",
+                "service_schema_dri": "12345",
+            },
+        ),
+    )
+    service = json.loads(service.body.decode("utf-8"))
+
+    new_connection = ConnectionRecord()
+    new_connection.state = new_connection.STATE_ACTIVE
+    conn_id = await new_connection.save(context)
+    print(service)
+    await cache_requested_services(context, conn_id, json.dumps([service]))
+
+    apply_res = await call_endpoint_validate(
+        apply_endpoint,
+        build_request_stub(
+            context,
+            {
+                "user_data": {"user_data": "cool_data"},
+                "service_uuid": service["service_uuid"],
+                "connection_uuid": conn_id,
+            },
+        ),
+    )
+    print(apply_res.body)
+
+
+async def test_add_service_endpoint():
+    context = await build_context("local")
+    consent = await add_consent(context, "asd", {}, "test_consent_dri")
+    service = await call_endpoint_validate(
+        add_service_endpoint,
+        build_request_stub(
+            context,
+            {
+                "consent_dri": consent.dri,
+                "label": "TestService",
+                "service_schema_dri": "12345",
+            },
+        ),
+    )
 
 
 async def main():
-    await add_service_("1234")
+    await test_add_service_endpoint()
+    await test_apply()
 
 
 run_standalone_async(__name__, main)
@@ -318,7 +375,7 @@ run_standalone_async(__name__, main)
     tags=["Services"],
     summary="Retrieve all defined services",
 )
-async def get_services(request: web.BaseRequest):
+async def get_services_endpoint(request: web.BaseRequest):
     context = request.app["request_context"]
 
     try:
@@ -333,7 +390,7 @@ async def get_services(request: web.BaseRequest):
     tags=["Services"],
     summary="Retrieve all defined services",
 )
-async def get_service(request: web.BaseRequest):
+async def get_service_endpoint(request: web.BaseRequest):
     context = request.app["request_context"]
     service_uuid = request.match_info["service_uuid"]
 
@@ -353,7 +410,7 @@ async def get_service(request: web.BaseRequest):
     summary="Request a service list from other agent",
     description="Reading the list requires webhook handling",
 )
-async def request_services(request: web.BaseRequest):
+async def request_services_endpoint(request: web.BaseRequest):
     context = request.app["request_context"]
     connection_id = request.match_info["connection_uuid"]
     outbound_handler = request.app["outbound_message_router"]
@@ -377,26 +434,26 @@ async def request_services(request: web.BaseRequest):
 services_routes = [
     web.get(
         "/connections/{connection_uuid}/services",
-        request_services,
+        request_services_endpoint,
         allow_head=False,
     ),
     web.get(
         "/services",
-        get_services,
+        get_services_endpoint,
         allow_head=False,
     ),
     web.get(
         "/services/{service_uuid}",
-        get_service,
+        get_service_endpoint,
         allow_head=False,
     ),
     web.post(
         "/services/add",
-        add_service,
+        add_service_endpoint,
     ),
-    web.post("/services/apply", apply),
+    web.post("/services/apply", apply_endpoint),
     web.post(
         "/verifiable-services/process-application",
-        process_application,
+        process_application_endpoint,
     ),
 ]

@@ -1,6 +1,11 @@
 from aiohttp import web
+from aiohttp.web_request import BaseRequest
 from aiohttp_apispec import docs, request_schema
-from aries_cloudagent.aathcf.utils import build_pds_context, run_standalone_async
+from aries_cloudagent.aathcf.utils import (
+    build_context,
+    run_standalone_async,
+    build_request_stub,
+)
 from aries_cloudagent.pdstorage_thcf.api import (
     OCARecord,
     pds_get_usage_policy_if_active_pds_supports_it,
@@ -8,6 +13,11 @@ from aries_cloudagent.pdstorage_thcf.api import (
     PDSError,
 )
 import aries_cloudagent.generated_models as Model
+import logging
+
+from marshmallow.fields import Constant
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DefinedConsent(OCARecord):
@@ -28,18 +38,8 @@ class ConsentGiven(OCARecord):
 async def add_consent(context, label, oca_data, oca_schema_dri):
     pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
     m = DefinedConsent(label, pds_usage_policy, oca_data, oca_schema_dri=oca_schema_dri)
-
-    if __debug__:
-        validation = Model.Consent().validate(m.__dict__)
-        assert validation == {"dri": ["Field may not be null."]}, validation
-
     dri = await m.save(context)
     record = await m.load(context, dri)
-
-    if __debug__:
-        validation = Model.Consent().validate(record.__dict__)
-        assert validation == {}, validation
-
     return record
 
 
@@ -59,11 +59,14 @@ async def retrieve_from_pds(context, oca_schema_dri):
 async def post_consent_api(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
+    LOGGER.info("post_consent_api, body: %s", body)
     result = await add_consent(
         context, body["label"], body["oca_data"], body["oca_schema_dri"]
     )
+    result = result.__dict__.copy()
+    result.pop("usage_policy", None)
 
-    return web.json_response(result.__dict__)
+    return web.json_response(result)
 
 
 @docs(tags=["Consents"], summary="Get all consent definitions")
@@ -113,28 +116,37 @@ consent_routes = [
 
 
 async def test_consent():
-    context = await build_pds_context()
-    consent = {
-        "oca_schema_dri": "consent_dri",
-        "label": "TestConsentLabel",
-        "oca_data": {
-            "additionalProp1": "string1",
-            "additionalProp2": "string",
-            "additionalProp3": "string",
+    context = await build_context("local")
+    request = build_request_stub(
+        context,
+        {
+            "oca_schema_dri": "consent_dri",
+            "label": "TestConsentLabel",
+            "oca_data": {
+                "additionalProp1": "string1",
+                "additionalProp2": "string",
+                "additionalProp3": "string",
+            },
         },
-    }
-    result = await add_consent(
-        context, consent["label"], consent["oca_data"], consent["oca_schema_dri"]
     )
-    result = await retrieve_from_pds(context, consent["oca_schema_dri"])
-    print(len(result))
 
-    consent_given = ConsentGiven(
-        "asatg3tr3", "asda452", oca_schema_dri="test_oca_schema_dri"
-    )
-    dri = await consent_given.save(context)
-    result = await consent_given.load(context, dri)
-    print(result.__dict__)
+    result = await post_consent_api(request)
+    print(result.body)
+
+    # result = await add_consent(
+    #     context, consent["label"], consent["oca_data"], consent["oca_schema_dri"]
+    # )
+    # print(result)
+
+    # result = await retrieve_from_pds(context, consent["oca_schema_dri"])
+    # print(len(result))
+
+    # consent_given = ConsentGiven(
+    #     "asatg3tr3", "asda452", oca_schema_dri="test_oca_schema_dri"
+    # )
+    # dri = await consent_given.save(context)
+    # result = await consent_given.load(context, dri)
+    # print(result.__dict__)
 
 
 run_standalone_async(__name__, test_consent)

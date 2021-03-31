@@ -46,6 +46,66 @@ async def send_confirmation(context, responder, exchange_id, state=None):
     await responder.send_reply(confirmation)
 
 
+async def application_handler(context):
+    wallet: BaseWallet = await context.inject(BaseWallet)
+    msg = context.message
+    consent = msg.consent_credential
+    consent = json.loads(consent, object_pairs_hook=OrderedDict)
+
+    try:
+        service: ServiceRecord = await ServiceRecord.retrieve_by_id_fully_serialized(
+            context, msg.service_id
+        )
+    except StorageNotFoundError as err:
+        LOGGER.warn("%s", err)
+        return ServiceIssueRecord.ISSUE_SERVICE_NOT_FOUND, None
+
+    """
+
+    Verify consent against these three vars from service requirements
+
+    """
+    data_dri = service["consent_dri"]
+    cred_content = consent["credentialSubject"]
+    is_malformed = cred_content["dri"] != data_dri
+
+    if is_malformed:
+        LOGGER.error(
+            f"Ismalformed? {is_malformed} Incoming consent"
+            f"credential doesn't match with service consent credential"
+            f"Conditions: data dri {cred_content['dri'] != data_dri} "
+        )
+        return ServiceIssueRecord.ISSUE_REJECTED
+
+    if not await verify_proof(wallet, consent):
+        LOGGER.error(f"Credential failed the verification process {consent}")
+        return ServiceIssueRecord.ISSUE_REJECTED
+
+    user_data_dri = await pds_save(
+        context,
+        msg.service_user_data,
+    )
+    assert user_data_dri == msg.service_user_data_dri
+
+    issue = ServiceIssueRecord(
+        state=ServiceIssueRecord.ISSUE_PENDING,
+        author=ServiceIssueRecord.AUTHOR_OTHER,
+        connection_id=context.connection_record.connection_id,
+        exchange_id=msg.exchange_id,
+        service_id=msg.service_id,
+        service_consent_match_id=msg.service_consent_match_id,
+        service_user_data_dri=user_data_dri,
+        service_schema=service["service_schema"],
+        service_consent_schema=service["consent_schema"],
+        label=service["label"],
+        their_public_did=msg.public_did,
+    )
+
+    await issue.user_consent_credential_pds_set(context, consent)
+    await issue.save(context)
+    return None, issue
+
+
 class ApplicationHandler(BaseHandler):
     """
     Handles the service application, saves it to storage and notifies the
@@ -54,100 +114,22 @@ class ApplicationHandler(BaseHandler):
 
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, Application)
-        wallet: BaseWallet = await context.inject(BaseWallet)
-
-        consent = context.message.consent_credential
-        consent = json.loads(consent, object_pairs_hook=OrderedDict)
-
-        try:
-            service: ServiceRecord = (
-                await ServiceRecord.retrieve_by_id_fully_serialized(
-                    context, context.message.service_id
-                )
+        err, issue = await application_handler(context)
+        if not err:
+            await responder.send_webhook(
+                "verifiable-services/incoming-pending-application",
+                {
+                    "issue": issue.serialize(),
+                    "issue_id": issue._id,
+                },
             )
-
-        except StorageNotFoundError as err:
-            LOGGER.warn(err)
-            await send_confirmation(
-                context,
-                responder,
-                context.message.exchange_id,
-                ServiceIssueRecord.ISSUE_SERVICE_NOT_FOUND,
-            )
-            return
-
-        """
-
-        Verify consent against these three vars from service requirements
-
-        """
-        data_dri = service["consent_dri"]
-        cred_content = consent["credentialSubject"]
-
-        print(cred_content)
-        is_malformed = cred_content["oca_data_dri"] != data_dri
-
-        if is_malformed:
-            await send_confirmation(
-                context,
-                responder,
-                context.message.exchange_id,
-                ServiceIssueRecord.ISSUE_REJECTED,
-            )
-            raise HandlerException(
-                f"Ismalformed? {is_malformed} Incoming consent"
-                f"credential doesn't match with service consent credential"
-                f"Conditions: data dri {cred_content['oca_data_dri'] != data_dri} "
-            )
-
-        if not await verify_proof(wallet, consent):
-            await send_confirmation(
-                context,
-                responder,
-                context.message.exchange_id,
-                ServiceIssueRecord.ISSUE_REJECTED,
-            )
-            raise HandlerException(
-                f"Credential failed the verification process {consent}"
-            )
-
-        user_data_dri = await pds_save(
-            context,
-            context.message.service_user_data,
-        )
-        assert user_data_dri == context.message.service_user_data_dri
-
-        issue = ServiceIssueRecord(
-            state=ServiceIssueRecord.ISSUE_PENDING,
-            author=ServiceIssueRecord.AUTHOR_OTHER,
-            connection_id=context.connection_record.connection_id,
-            exchange_id=context.message.exchange_id,
-            service_id=context.message.service_id,
-            service_consent_match_id=context.message.service_consent_match_id,
-            service_user_data_dri=user_data_dri,
-            service_schema=service["service_schema"],
-            service_consent_schema=service["consent_schema"],
-            label=service["label"],
-            their_public_did=context.message.public_did,
-        )
-
-        await issue.user_consent_credential_pds_set(context, consent)
-
-        issue_id = await issue.save(context)
+            err = ServiceIssueRecord.ISSUE_PENDING
 
         await send_confirmation(
             context,
             responder,
             context.message.exchange_id,
-            ServiceIssueRecord.ISSUE_PENDING,
-        )
-
-        await responder.send_webhook(
-            "verifiable-services/incoming-pending-application",
-            {
-                "issue": issue.serialize(),
-                "issue_id": issue_id,
-            },
+            err,
         )
 
 
