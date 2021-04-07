@@ -30,25 +30,8 @@ LOGGER = logging.getLogger(__name__)
 SERVICE_USER_DATA_TABLE = "service_user_data_table"
 
 
-async def send_confirmation(context, responder, exchange_id, state=None):
-    """
-    Create and send a Confirmation message,
-    this updates the state of service exchange.
-    """
-
-    LOGGER.info("send confirmation %s", state)
-    confirmation = Confirmation(
-        exchange_id=exchange_id,
-        state=state,
-    )
-
-    confirmation.assign_thread_from(context.message)
-    await responder.send_reply(confirmation)
-
-
-async def application_handler(context):
+async def application_handler(context, msg, connection_id):
     wallet: BaseWallet = await context.inject(BaseWallet)
-    msg = context.message
     consent = msg.consent_credential
     consent = json.loads(consent, object_pairs_hook=OrderedDict)
 
@@ -90,13 +73,11 @@ async def application_handler(context):
     issue = ServiceIssueRecord(
         state=ServiceIssueRecord.ISSUE_PENDING,
         author=ServiceIssueRecord.AUTHOR_OTHER,
-        connection_id=context.connection_record.connection_id,
+        connection_id=connection_id,
         exchange_id=msg.exchange_id,
         service_id=msg.service_id,
         service_consent_match_id=msg.service_consent_match_id,
         service_user_data_dri=user_data_dri,
-        service_schema=service["service_schema"],
-        service_consent_schema=service["consent_schema"],
         label=service["label"],
         their_public_did=msg.public_did,
     )
@@ -104,6 +85,65 @@ async def application_handler(context):
     await issue.user_consent_credential_pds_set(context, consent)
     await issue.save(context)
     return None, issue
+
+
+async def application_response_handler(context, msg, connection_id):
+    issue: ServiceIssueRecord = (
+        await ServiceIssueRecord.retrieve_by_exchange_id_and_connection_id(
+            context,
+            msg.exchange_id,
+            connection_id,
+        )
+    )
+
+    credential = json.loads(msg.credential, object_pairs_hook=OrderedDict)
+
+    promised_oca_dri = issue.service_schema_dri
+    promised_data_dri = issue.service_user_data_dri
+    promised_conset_match = issue.service_consent_match_id
+
+    subject = credential["credentialSubject"]
+
+    is_malformed = (
+        subject["oca_schema_dri"] != promised_oca_dri
+        or subject["oca_data_dri"] != promised_data_dri
+        or subject["service_consent_match_id"] != promised_conset_match
+    )
+
+    if is_malformed:
+        raise HandlerException(
+            f"Incoming credential is malformed! \n"
+            f"is_malformed ? {is_malformed} \n"
+            f"promised_data_dri: {promised_data_dri} promised_conset_match: {promised_conset_match} \n"
+            f"malformed credential {credential} \n"
+        )
+
+    try:
+        holder: BaseHolder = await context.inject(BaseHolder)
+        credential_id = await holder.store_credential(
+            credential_definition={},
+            credential_data=credential,
+            credential_request_metadata={},
+        )
+    except HolderError as err:
+        raise HandlerException(err.roll_up)
+
+    issue.state = ServiceIssueRecord.ISSUE_CREDENTIAL_RECEIVED
+    issue.credential_id = credential_id
+    await issue.save(context)
+
+    return credential_id
+
+
+async def send_confirmation(context, responder, exchange_id, state=None):
+    LOGGER.info("send confirmation %s", state)
+    confirmation = Confirmation(
+        exchange_id=exchange_id,
+        state=state,
+    )
+
+    confirmation.assign_thread_from(context.message)
+    await responder.send_reply(confirmation)
 
 
 class ApplicationHandler(BaseHandler):
@@ -114,10 +154,12 @@ class ApplicationHandler(BaseHandler):
 
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, Application)
-        err, issue = await application_handler(context)
+        err, issue = await application_handler(
+            context, context.message, responder.connection_id
+        )
         if not err:
             await responder.send_webhook(
-                "verifiable-services/incoming-pending-application",
+                "services/application",
                 {
                     "issue": issue.serialize(),
                     "issue_id": issue._id,
@@ -141,68 +183,9 @@ class ApplicationResponseHandler(BaseHandler):
 
     async def handle(self, context: RequestContext, responder: BaseResponder):
         debug_handler(self._logger.debug, context, ApplicationResponse)
-
-        issue: ServiceIssueRecord = (
-            await ServiceIssueRecord.retrieve_by_exchange_id_and_connection_id(
-                context,
-                context.message.exchange_id,
-                context.connection_record.connection_id,
-            )
+        credential_id = await application_response_handler(
+            context, context.message, responder.connection_id
         )
-
-        cred_str = context.message.credential
-        credential = json.loads(cred_str, object_pairs_hook=OrderedDict)
-
-        """
-
-        Check if we got(credential) what was *promised* by the service provider 
-
-        """
-
-        promised_oca_dri = issue.service_schema["oca_schema_dri"]
-        promised_namespace = issue.service_schema["oca_schema_namespace"]
-        promised_data_dri = issue.service_user_data_dri
-        promised_conset_match = issue.service_consent_match_id
-
-        subject = credential["credentialSubject"]
-
-        is_malformed = (
-            subject["oca_schema_dri"] != promised_oca_dri
-            or subject["oca_schema_namespace"] != promised_namespace
-            or subject["oca_data_dri"] != promised_data_dri
-            or subject["service_consent_match_id"] != promised_conset_match
-        )
-
-        if is_malformed:
-            raise HandlerException(
-                f"Incoming credential is malformed! \n"
-                f"is_malformed ? {is_malformed} \n"
-                f"promised_oca_dri: {promised_oca_dri} promised_namespace: {promised_namespace} \n"
-                f"promised_data_dri: {promised_data_dri} promised_conset_match: {promised_conset_match} \n"
-                f"malformed credential {credential} \n"
-            )
-
-        """
-
-        Check the proof and save
-
-        """
-
-        try:
-            holder: BaseHolder = await context.inject(BaseHolder)
-            credential_id = await holder.store_credential(
-                credential_definition={},
-                credential_data=credential,
-                credential_request_metadata={},
-            )
-            self._logger.info("Stored Credential ID %s", credential_id)
-        except HolderError as err:
-            raise HandlerException(err.roll_up)
-
-        issue.state = ServiceIssueRecord.ISSUE_CREDENTIAL_RECEIVED
-        issue.credential_id = credential_id
-        await issue.save(context)
-
         await responder.send_webhook(
             "verifiable-services/credential-received",
             {

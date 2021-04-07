@@ -85,6 +85,7 @@ class ServiceRecord(BaseRecord):
         for current in query:
             record = current.record_value
             try:
+                print(record)
                 qu = await DefinedConsent.load(context, record["consent_dri"])
                 record["consent_schema"] = qu.serialize()
             except PDSError as err:
