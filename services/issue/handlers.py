@@ -184,41 +184,16 @@ class ApplicationResponseHandler(BaseHandler):
 
         cred_str = context.message.credential
         credential = json.loads(cred_str, object_pairs_hook=OrderedDict)
-
-        """
-
-        Check if we got(credential) what was *promised* by the service provider 
-
-        """
-
-        promised_oca_dri = issue.service_schema["oca_schema_dri"]
-        promised_namespace = issue.service_schema["oca_schema_namespace"]
-        promised_data_dri = issue.service_user_data_dri
-        promised_conset_match = issue.service_consent_match_id
-
-        subject = credential["credentialSubject"]
-
-        is_malformed = (
-            subject["oca_schema_dri"] != promised_oca_dri
-            or subject["oca_schema_namespace"] != promised_namespace
-            or subject["oca_data_dri"] != promised_data_dri
-            or subject["service_consent_match_id"] != promised_conset_match
+        cred_data = context.message.cred_data
+        cred_data_dri = await pds_save_a(
+            context,
+            cred_data,
+            oca_schema_dri=credential["credentialSubject"]["oca_schema_dri"],
         )
 
-        if is_malformed:
-            raise HandlerException(
-                f"Incoming credential is malformed! \n"
-                f"is_malformed ? {is_malformed} \n"
-                f"promised_oca_dri: {promised_oca_dri} promised_namespace: {promised_namespace} \n"
-                f"promised_data_dri: {promised_data_dri} promised_conset_match: {promised_conset_match} \n"
-                f"malformed credential {credential} \n"
-            )
-
-        """
-
-        Check the proof and save
-
-        """
+        assert (
+            cred_data_dri == credential["credentialSubject"]["oca_data_dri"]
+        ), "cred_data_dri are different across agents"
 
         try:
             holder: BaseHolder = await context.inject(BaseHolder)

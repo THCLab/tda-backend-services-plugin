@@ -1,18 +1,10 @@
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
-from aries_cloudagent.storage.base import BaseStorage
-from aries_cloudagent.config.injection_context import InjectionContext
 from aries_cloudagent.storage.error import (
-    StorageDuplicateError,
     StorageError,
     StorageNotFoundError,
 )
-from aries_cloudagent.messaging.util import datetime_to_str, time_now
 
-import hashlib
 from marshmallow import fields, Schema
-from typing import Mapping, Any
-import uuid
-import json
 from .consents.models.defined_consent import DefinedConsentRecord
 import logging
 from aiohttp import web
@@ -73,7 +65,11 @@ class ServiceRecord(BaseRecord):
         """Accessor to for the JSON record value properties"""
         return {
             prop: getattr(self, prop)
-            for prop in ("service_schema", "consent_id", "label",)
+            for prop in (
+                "service_schema",
+                "consent_id",
+                "label",
+            )
         }
 
     @property
@@ -82,7 +78,13 @@ class ServiceRecord(BaseRecord):
 
     @classmethod
     async def query_fully_serialized(
-        cls, context, *, tag_filter=None, positive_filter=None, negative_filter=None, skip_invalid=True
+        cls,
+        context,
+        *,
+        tag_filter=None,
+        positive_filter=None,
+        negative_filter=None,
+        skip_invalid=True,
     ):
         "Serializes consents with backing of valid PDS records"
         query = await cls.query(
@@ -96,25 +98,29 @@ class ServiceRecord(BaseRecord):
         for current in query:
             record = current.serialize()
             try:
-                record["consent_schema"] = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
+                record[
+                    "consent_schema"
+                ] = await DefinedConsentRecord.retrieve_by_id_fully_serialized(
                     context, record["consent_id"]
                 )
             except StorageError as err:
                 if skip_invalid:
                     LOGGER.warn("Consent not found when serializing service %s", err)
                     continue
-                else:  
+                else:
                     try:
-                        record["consent_schema"] = await DefinedConsentRecord.retrieve_by_id(
+                        record[
+                            "consent_schema"
+                        ] = await DefinedConsentRecord.retrieve_by_id(
                             context, record["consent_id"]
                         )
-                        record['consent_schema']['message'] = "Failed to fetch consent data from PDS"
+                        record["consent_schema"][
+                            "message"
+                        ] = "Failed to fetch consent data from PDS"
                     except StorageError as err:
                         LOGGER.warn("Consent not found in database %s", err)
-                        record['consent_schema'] = {}
-                        record['consent_schema']['message'] = "Invalid consent!"
-
-
+                        record["consent_schema"] = {}
+                        record["consent_schema"]["message"] = "Invalid consent!"
 
             record["service_id"] = current._id
 

@@ -170,6 +170,7 @@ async def send_confirmation(outbound_handler, connection_id, exchange_id, state)
 class ProcessApplicationSchema(Schema):
     issue_id = fields.Str(required=True)
     decision = fields.Str(required=True)
+    data = fields.Dict()
 
 
 @docs(
@@ -190,6 +191,7 @@ async def process_application(request: web.BaseRequest):
     context = request.app["request_context"]
     params = await request.json()
     issue_id = params["issue_id"]
+    cred_data = params["data"]
 
     issue: ServiceIssueRecord = await retrieve_service_issue(context, issue_id)
     exchange_id = issue.exchange_id
@@ -197,12 +199,6 @@ async def process_application(request: web.BaseRequest):
 
     service: ServiceRecord = await retrieve_service(context, issue.service_id)
     connection: ConnectionRecord = await retrieve_connection(context, connection_id)
-
-    """
-
-    Users can decide to reject the application
-
-    """
 
     if (
         params["decision"] == "reject"
@@ -221,17 +217,15 @@ async def process_application(request: web.BaseRequest):
             }
         )
 
-    """
-
-    Create a service credential with values from the applicant
-
-    """
+    cred_data_dri = await pds_save_a(
+        context, cred_data, oca_schema_dri=service.service_schema["oca_schema_dri"]
+    )
     issuer: BaseIssuer = await context.inject(BaseIssuer)
     credential = await issuer.create_credential_ex(
         {
             "oca_schema_dri": service.service_schema["oca_schema_dri"],
             "oca_schema_namespace": service.service_schema["oca_schema_namespace"],
-            "oca_data_dri": issue.service_user_data_dri,
+            "oca_data_dri": cred_data_dri,  # issue.service_user_data_dri,
             "service_consent_match_id": issue.service_consent_match_id,
         },
         subject_public_did=issue.their_public_did,
@@ -240,7 +234,9 @@ async def process_application(request: web.BaseRequest):
     issue.state = ServiceIssueRecord.ISSUE_ACCEPTED
     await issue.issuer_credential_pds_set(context, credential)
     await issue.save(context, reason="Accepted service issue, credential offer created")
-    resp = ApplicationResponse(credential=credential, exchange_id=exchange_id)
+    resp = ApplicationResponse(
+        credential=credential, exchange_id=exchange_id, cred_data=cred_data
+    )
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(
         {
