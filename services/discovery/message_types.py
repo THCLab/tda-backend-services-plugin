@@ -34,6 +34,7 @@ class DiscoveryServiceSchema(Schema):
     service_id = fields.Str(required=True)
     service_schema = fields.Nested(ServiceSchema())
     consent_schema = fields.Nested(ConsentSchema())
+    certificate_schema = fields.Nested(ServiceSchema())
 
 
 class DiscoveryResponse(AgentMessage):
@@ -88,5 +89,8 @@ class DEBUGDiscoveryResponseSchema(AgentMessageSchema):
     class Meta:
         model_class = DEBUGDiscoveryResponse
 
-    services = fields.List(fields.Dict(), required=True,)
+    services = fields.List(
+        fields.Dict(),
+        required=True,
+    )
     usage_policy = fields.Str(required=False)

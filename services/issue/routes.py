@@ -1,3 +1,4 @@
+from ..discovery.routes import certificate_get
 from aries_cloudagent.connections.models.connection_record import ConnectionRecord
 from aries_cloudagent.storage.error import *
 
@@ -23,6 +24,7 @@ from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
 )
 from ..util import *
 from aries_cloudagent.protocols.present_proof.v1_1.routes import verify_usage_policy
+from aries_cloudagent.aathcf.utils import run_standalone_async, build_context
 
 LOGGER = logging.getLogger(__name__)
 MY_SERVICE_DATA_TABLE = "my_service_data_table"
@@ -69,12 +71,6 @@ async def apply(request: web.BaseRequest):
 
     service_consent_match_id = str(uuid.uuid4())
 
-    """
-
-    Pop the usage policy of service provider and bring our policy to
-    credential
-
-    """
     service_consent_copy = service_consent_schema.copy()
     service_consent_copy.pop("oca_data", None)
     usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
@@ -170,7 +166,7 @@ async def send_confirmation(outbound_handler, connection_id, exchange_id, state)
 class ProcessApplicationSchema(Schema):
     issue_id = fields.Str(required=True)
     decision = fields.Str(required=True)
-    data = fields.Dict()
+    data = fields.Dict(required=True)
 
 
 @docs(
@@ -191,7 +187,7 @@ async def process_application(request: web.BaseRequest):
     context = request.app["request_context"]
     params = await request.json()
     issue_id = params["issue_id"]
-    cred_data = params["data"]
+    report_data = params["data"]
 
     issue: ServiceIssueRecord = await retrieve_service_issue(context, issue_id)
     exchange_id = issue.exchange_id
@@ -217,25 +213,36 @@ async def process_application(request: web.BaseRequest):
             }
         )
 
-    cred_data_dri = await pds_save_a(
-        context, cred_data, oca_schema_dri=service.service_schema["oca_schema_dri"]
+    cert_oca_s_dri = service.certificate_schema["oca_schema_dri"]
+    certificate = await certificate_get(context, cert_oca_s_dri)
+    if certificate is None:
+        raise web.HTTPNotFound(reason="certificate_schema not found")
+
+    print("certificate", certificate)
+    certificate["associatedReportID"] = issue.exchange_id
+    cert_dri = await pds_save_a(
+        context,
+        certificate,
+        table="dip.data.tda.oca_chunks." + cert_oca_s_dri,
     )
+
     issuer: BaseIssuer = await context.inject(BaseIssuer)
     credential = await issuer.create_credential_ex(
         {
-            "oca_schema_dri": service.service_schema["oca_schema_dri"],
-            "oca_schema_namespace": service.service_schema["oca_schema_namespace"],
-            "oca_data_dri": cred_data_dri,  # issue.service_user_data_dri,
+            "oca_schema_dri": cert_oca_s_dri,
+            "oca_schema_namespace": service.certificate_schema["oca_schema_namespace"],
+            "oca_data_dri": cert_dri,  # issue.service_user_data_dri, # certificate
             "service_consent_match_id": issue.service_consent_match_id,
         },
         subject_public_did=issue.their_public_did,
     )
 
     issue.state = ServiceIssueRecord.ISSUE_ACCEPTED
+    issue.report_data = report_data
     await issue.issuer_credential_pds_set(context, credential)
     await issue.save(context, reason="Accepted service issue, credential offer created")
     resp = ApplicationResponse(
-        credential=credential, exchange_id=exchange_id, cred_data=cred_data
+        credential=credential, exchange_id=exchange_id, report_data=report_data
     )
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(
@@ -245,6 +252,37 @@ async def process_application(request: web.BaseRequest):
             "connection_id": connection_id,
         }
     )
+
+
+async def test_():
+    context = await build_context()
+    payload = {
+        "associatedReportID": "Text",
+        "uniqueNumericIDHash": "Text",
+        "disease": "Text",
+        "vaccineDescription": "Text",
+        "atcCode": "Text",
+        "certificateIssuer": "Text",
+        "certificateNumber": "Text",
+        "certificateValidFrom": "Date",
+        "certificateValidTo": "Date",
+        "formVersion": "Text",
+    }
+    await pds_save_a(
+        context,
+        payload,
+        table="dip.data.tda.oca_chunks.predefined.9GdWoQwth9299oYj8HfdgRZjtSxW9sTVyy1RnfhQ35yJ",
+    )
+
+    result = await load_multiple(
+        context,
+        table="dip.data.tda.oca_chunks.predefined.9GdWoQwth9299oYj8HfdgRZjtSxW9sTVyy1RnfhQ35yJ",
+    )
+
+    print(result[0]["content"]["associatedReportID"])
+
+
+run_standalone_async(__name__, test_)
 
 
 class GetIssueFilteredSchema(Schema):

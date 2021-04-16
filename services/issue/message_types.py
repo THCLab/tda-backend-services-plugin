@@ -44,7 +44,7 @@ ApplicationResponse, ApplicationResponseSchema = generate_model_schema(
     handler=f"{PROTOCOL_PACKAGE}.ApplicationResponseHandler",
     msg_type=APPLICATION_RESPONSE,
     schema={
-        "cred_data": fields.Dict(),
+        "report_data": fields.Dict(),
         "credential": fields.Str(required=True),
         "exchange_id": fields.Str(required=True),
     },

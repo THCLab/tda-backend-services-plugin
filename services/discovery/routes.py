@@ -1,18 +1,13 @@
+from aries_cloudagent.aathcf.utils import build_context, run_standalone_async
 from aries_cloudagent.connections.models.connection_record import ConnectionRecord
-from aries_cloudagent.messaging.valid import UUIDFour
 from aries_cloudagent.storage.error import StorageNotFoundError, StorageDuplicateError
-from aries_cloudagent.storage.base import BaseStorage
 from ..consents.models.defined_consent import *
 
 from aiohttp import web
-from aiohttp import ClientSession
 from aiohttp_apispec import docs, request_schema, match_info_schema
 
 from marshmallow import fields, Schema
-import logging
-import hashlib
 import time
-from typing import Sequence
 
 # Internal
 from ..models import *
@@ -31,6 +26,35 @@ class AddServiceSchema(Schema):
     label = fields.Str(required=True)
     consent_id = fields.Str(required=True)
     service_schema = fields.Nested(ServiceSchema())
+    certificate_schema = fields.Nested(ServiceSchema())
+
+
+async def certificate_get(context, oca_schema_dri):
+    certificate = await load_multiple(
+        context,
+        table="dip.data.tda.oca_chunks.predefined." + oca_schema_dri,
+    )
+
+    if len(certificate) == 0:
+        return None
+    elif len(certificate) > 1:
+        LOGGER.warning("More than one predefined oca_schema for this dri!")
+
+    certificate = certificate[0]["content"]
+    if isinstance(certificate, str):
+        certificate = json.loads(certificate)
+    return certificate
+
+
+async def test_certificate_get():
+    context = await build_context()
+    resp = await certificate_get(
+        context, "9GdWoQwth9299oYj8HfdgRZjtSxW9sTVyy1RnfhQ35yJ"
+    )
+    print(resp)
+
+
+run_standalone_async(__name__, test_certificate_get)
 
 
 @request_schema(AddServiceSchema())
@@ -44,10 +68,16 @@ async def add_service(request: web.BaseRequest):
     except StorageError as err:
         raise web.HTTPBadRequest(reason=err.roll_up)
 
+    cert_oca = params["certificate_schema"]["oca_schema_dri"]
+    cert = await certificate_get(context, cert_oca)
+    if cert is None:
+        raise web.HTTPNotFound(reason="Certificate_schema not found")
+
     service_record = ServiceRecord(
         label=params["label"],
         service_schema=params["service_schema"],
         consent_id=params["consent_id"],
+        certificate_schema=params["certificate_schema"],
     )
 
     try:
@@ -89,13 +119,14 @@ async def request_services_list(request: web.BaseRequest):
 
 
 @docs(
-    tags=["Service Discovery"], summary="Get a list of all services I registered",
+    tags=["Service Discovery"],
+    summary="Get a list of all services I registered",
 )
 async def self_service_list(request: web.BaseRequest):
     context = request.app["request_context"]
 
     try:
-        result = await ServiceRecord().query_fully_serialized(context, skip_invalid=False)
+        result = await ServiceRecord.query_fully_serialized(context, skip_invalid=False)
     except StorageNotFoundError:
         raise web.HTTPNotFound
 
@@ -107,7 +138,8 @@ class GetServiceSchema(Schema):
 
 
 @docs(
-    tags=["Service Discovery"], summary="Get a service registered by ME",
+    tags=["Service Discovery"],
+    summary="Get a service registered by ME",
 )
 @match_info_schema(GetServiceSchema)
 async def get_service(request: web.BaseRequest):

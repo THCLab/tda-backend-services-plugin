@@ -68,7 +68,7 @@ class ServiceIssueRecord(BaseRecord):
         user_consent_credential_dri: dict = None,
         credential_id: str = None,
         their_public_did: str = None,
-        #
+        report_data: dict = None,
         exchange_id: str = None,
         record_id: str = None,
         **keywordArgs,
@@ -88,6 +88,7 @@ class ServiceIssueRecord(BaseRecord):
         self.credential_id = credential_id
         self.their_public_did = their_public_did
         self.user_consent_credential_dri = user_consent_credential_dri
+        self.report_data = report_data
 
     @property
     def record_value(self) -> dict:

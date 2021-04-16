@@ -1,4 +1,5 @@
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
+from aries_cloudagent.pdstorage_thcf.error import PDSError, PDSRecordNotFoundError
 from aries_cloudagent.storage.error import (
     StorageError,
     StorageNotFoundError,
@@ -49,13 +50,15 @@ class ServiceRecord(BaseRecord):
         self,
         *,
         label: str = None,
-        service_schema: ServiceSchema = None,
+        service_schema: dict = None,
+        certificate_schema: dict = None,
         consent_id: str = None,
         state: str = None,
         record_id: str = None,
         **keyword_args,
     ):
         super().__init__(record_id, state, **keyword_args)
+        self.certificate_schema = certificate_schema
         self.service_schema = service_schema
         self.consent_id = consent_id
         self.label = label
@@ -66,6 +69,7 @@ class ServiceRecord(BaseRecord):
         return {
             prop: getattr(self, prop)
             for prop in (
+                "certificate_schema",
                 "service_schema",
                 "consent_id",
                 "label",
@@ -166,3 +170,4 @@ class ServiceRecordSchema(BaseRecordSchema):
     service_id = fields.Str(required=True)
     service_schema = fields.Nested(ServiceSchema())
     consent_id = fields.Str(required=True)
+    certificate_schema = fields.Nested(ServiceSchema())

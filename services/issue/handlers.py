@@ -184,16 +184,6 @@ class ApplicationResponseHandler(BaseHandler):
 
         cred_str = context.message.credential
         credential = json.loads(cred_str, object_pairs_hook=OrderedDict)
-        cred_data = context.message.cred_data
-        cred_data_dri = await pds_save_a(
-            context,
-            cred_data,
-            oca_schema_dri=credential["credentialSubject"]["oca_schema_dri"],
-        )
-
-        assert (
-            cred_data_dri == credential["credentialSubject"]["oca_data_dri"]
-        ), "cred_data_dri are different across agents"
 
         try:
             holder: BaseHolder = await context.inject(BaseHolder)
@@ -207,6 +197,7 @@ class ApplicationResponseHandler(BaseHandler):
             raise HandlerException(err.roll_up)
 
         issue.state = ServiceIssueRecord.ISSUE_CREDENTIAL_RECEIVED
+        issue.report_data = context.message.report_data
         issue.credential_id = credential_id
         await issue.save(context)
 
