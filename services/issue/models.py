@@ -110,6 +110,7 @@ class ServiceIssueRecord(BaseRecord):
                 "user_consent_credential_dri",
                 "credential_id",
                 "their_public_did",
+                "report_data",
             )
         }
 
@@ -239,3 +240,4 @@ class ServiceIssueRecordSchema(BaseRecordSchema):
     credential_id = fields.Str(required=False)
     service_user_data_dri = fields.Str(required=False)
     their_public_did = fields.Str(required=False)
+    report_data = fields.Dict()

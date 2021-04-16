@@ -218,7 +218,6 @@ async def process_application(request: web.BaseRequest):
     if certificate is None:
         raise web.HTTPNotFound(reason="certificate_schema not found")
 
-    print("certificate", certificate)
     certificate["associatedReportID"] = issue.exchange_id
     cert_dri = await pds_save_a(
         context,
@@ -380,9 +379,13 @@ async def serialize_and_verify_service_issue(context, issue):
 @request_schema(GetIssueFilteredSchema())
 async def get_issue_self(request: web.BaseRequest):
     context = request.app["request_context"]
-    outbound_handler = request.app["outbound_message_router"]
     params = await request.json()
+    result = await get_issue_self_(context, params)
 
+    return web.json_response({"success": True, "result": result})
+
+
+async def get_issue_self_(context, params):
     try:
         query = await ServiceIssueRecord.query(context, tag_filter=params)
     except StorageError as err:
@@ -390,12 +393,23 @@ async def get_issue_self(request: web.BaseRequest):
 
     result = []
     for i in query:
-
         record = await serialize_and_verify_service_issue(context, i)
-
         result.append(record)
+    return result
 
-    return web.json_response({"success": True, "result": result})
+
+@docs(
+    tags=["Verifiable Services"],
+    summary="Query a report by id",
+)
+async def query_report(request: web.BaseRequest):
+    context = request.app["request_context"]
+    report_id = request.match_info["associatedReportID"]
+    result = await get_issue_self_(context, {"exchange_id": report_id})
+    if len(result) == 0:
+        return web.json_response({})
+    result = result[0]
+    return web.json_response(result["report_data"])
 
 
 class GetIssueByIdSchema(Schema):
