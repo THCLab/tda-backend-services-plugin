@@ -46,6 +46,7 @@ ApplicationResponse, ApplicationResponseSchema = generate_model_schema(
     schema={
         "report_data": fields.Dict(),
         "credential": fields.Str(required=True),
+        "credential_data": fields.Dict(required=True),
         "exchange_id": fields.Str(required=True),
     },
 )

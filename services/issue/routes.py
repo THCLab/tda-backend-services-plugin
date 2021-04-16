@@ -241,7 +241,10 @@ async def process_application(request: web.BaseRequest):
     await issue.issuer_credential_pds_set(context, credential)
     await issue.save(context, reason="Accepted service issue, credential offer created")
     resp = ApplicationResponse(
-        credential=credential, exchange_id=exchange_id, report_data=report_data
+        credential=credential,
+        exchange_id=exchange_id,
+        report_data=report_data,
+        credential_data=certificate,
     )
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(

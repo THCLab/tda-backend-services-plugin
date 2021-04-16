@@ -184,6 +184,14 @@ class ApplicationResponseHandler(BaseHandler):
 
         cred_str = context.message.credential
         credential = json.loads(cred_str, object_pairs_hook=OrderedDict)
+        credential_data = context.message.credential_data
+        credential_dri = await pds_save_a(
+            context,
+            credential_data,
+            oca_schema_dri=credential["credentialSubject"]["oca_schema_dri"],
+        )
+        print(credential_data)
+        assert credential["credentialSubject"]["oca_data_dri"] == credential_dri
 
         try:
             holder: BaseHolder = await context.inject(BaseHolder)
