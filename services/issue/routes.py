@@ -216,27 +216,23 @@ async def process_application(request: web.BaseRequest):
     cred_schem_dri = service.service_schema.get("oca_schema_dri")
     cred_namspc = service.service_schema.get("oca_schema_namespace")
     cred_data_dri = issue.service_user_data_dri
-    cred_data = await pds_load(context, issue.service_user_data_dri)
+    cred_data = await pds_load(context, cred_data_dri)
     if service.certificate_schema:
-        print(service.certificate_schema)
-        cert_schema_dri = service.certificate_schema["oca_schema_dri"]
-        try:
-            certificate = await certificate_get(context, cert_schema_dri)
-        except json.JSONDecodeError:
-            raise web.HTTPBadRequest("certificate_schema doesn't conform to json spec")
+        cred_schem_dri = service.certificate_schema["oca_schema_dri"]
+        cred_namspc = service.certificate_schema["oca_schema_namespace"]
+
+        certificate = await certificate_get(context, cred_schem_dri)
         if certificate is None:
             raise web.HTTPNotFound(reason="certificate_schema not found")
 
         certificate["associatedReportID"] = issue.exchange_id
-        cred_data_dri = await pds_save_a(
-            context,
-            certificate,
-            table="dip.data.tda.oca_chunks." + cert_schema_dri,
-        )
 
         cred_data = certificate
-        cred_schem_dri = cert_schema_dri
-        cred_namspc = service.certificate_schema["oca_schema_namespace"]
+        cred_data_dri = await pds_save_a(
+            context,
+            cred_data,
+            table="dip.data.tda.oca_chunks." + cred_schem_dri,
+        )
 
     issuer: BaseIssuer = await context.inject(BaseIssuer)
     credential = await issuer.create_credential_ex(

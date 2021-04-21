@@ -190,8 +190,6 @@ class ApplicationResponseHandler(BaseHandler):
             credential_data,
             oca_schema_dri=credential["credentialSubject"]["oca_schema_dri"],
         )
-        print(credential_data)
-        assert credential["credentialSubject"]["oca_data_dri"] == credential_dri
 
         try:
             holder: BaseHolder = await context.inject(BaseHolder)
