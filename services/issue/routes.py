@@ -34,7 +34,7 @@ OCA_DATA_CHUNKS = "tda.oca_chunks"
 class ApplySchema(Schema):
     connection_id = fields.Str(required=True)
     user_data = fields.Str(required=True)
-    service = fields.Nested(DiscoveryServiceSchema())
+    service = fields.Nested(DiscoveryServiceSchema(), required=True)
 
 
 async def get_public_did(context):
@@ -213,24 +213,37 @@ async def process_application(request: web.BaseRequest):
             }
         )
 
-    cert_oca_s_dri = service.certificate_schema["oca_schema_dri"]
-    certificate = await certificate_get(context, cert_oca_s_dri)
-    if certificate is None:
-        raise web.HTTPNotFound(reason="certificate_schema not found")
+    cred_schem_dri = service.service_schema.get("oca_schema_dri")
+    cred_namspc = service.service_schema.get("oca_schema_namespace")
+    cred_data_dri = issue.service_user_data_dri
+    cred_data = await pds_load(context, issue.service_user_data_dri)
+    if service.certificate_schema:
+        print(service.certificate_schema)
+        cert_schema_dri = service.certificate_schema["oca_schema_dri"]
+        try:
+            certificate = await certificate_get(context, cert_schema_dri)
+        except json.JSONDecodeError:
+            raise web.HTTPBadRequest("certificate_schema doesn't conform to json spec")
+        if certificate is None:
+            raise web.HTTPNotFound(reason="certificate_schema not found")
 
-    certificate["associatedReportID"] = issue.exchange_id
-    cert_dri = await pds_save_a(
-        context,
-        certificate,
-        table="dip.data.tda.oca_chunks." + cert_oca_s_dri,
-    )
+        certificate["associatedReportID"] = issue.exchange_id
+        cred_data_dri = await pds_save_a(
+            context,
+            certificate,
+            table="dip.data.tda.oca_chunks." + cert_schema_dri,
+        )
+
+        cred_data = certificate
+        cred_schem_dri = cert_schema_dri
+        cred_namspc = service.certificate_schema["oca_schema_namespace"]
 
     issuer: BaseIssuer = await context.inject(BaseIssuer)
     credential = await issuer.create_credential_ex(
         {
-            "oca_schema_dri": cert_oca_s_dri,
-            "oca_schema_namespace": service.certificate_schema["oca_schema_namespace"],
-            "oca_data_dri": cert_dri,  # issue.service_user_data_dri, # certificate
+            "oca_schema_dri": cred_schem_dri,
+            "oca_schema_namespace": cred_namspc,
+            "oca_data_dri": cred_data_dri,
             "service_consent_match_id": issue.service_consent_match_id,
         },
         subject_public_did=issue.their_public_did,
@@ -244,7 +257,7 @@ async def process_application(request: web.BaseRequest):
         credential=credential,
         exchange_id=exchange_id,
         report_data=report_data,
-        credential_data=certificate,
+        credential_data=cred_data,
     )
     await outbound_handler(resp, connection_id=connection_id)
     return web.json_response(
@@ -284,7 +297,7 @@ async def test_():
     print(result[0]["content"]["associatedReportID"])
 
 
-run_standalone_async(__name__, test_)
+# run_standalone_async(__name__, test_)
 
 
 class GetIssueFilteredSchema(Schema):

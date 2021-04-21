@@ -26,7 +26,7 @@ class AddServiceSchema(Schema):
     label = fields.Str(required=True)
     consent_id = fields.Str(required=True)
     service_schema = fields.Nested(ServiceSchema())
-    certificate_schema = fields.Nested(ServiceSchema())
+    certificate_schema = fields.Nested(ServiceSchema(), required=False)
 
 
 async def certificate_get(context, oca_schema_dri):
@@ -68,16 +68,17 @@ async def add_service(request: web.BaseRequest):
     except StorageError as err:
         raise web.HTTPBadRequest(reason=err.roll_up)
 
-    cert_oca = params["certificate_schema"]["oca_schema_dri"]
-    cert = await certificate_get(context, cert_oca)
-    if cert is None:
-        raise web.HTTPNotFound(reason="Certificate_schema not found")
+    cert = params.get("certificate_schema")
+    if cert:
+        await certificate_get(context, cert.get("oca_schema_dri"))
+        if cert is None:
+            raise web.HTTPNotFound(reason="Certificate_schema not found")
 
     service_record = ServiceRecord(
         label=params["label"],
         service_schema=params["service_schema"],
         consent_id=params["consent_id"],
-        certificate_schema=params["certificate_schema"],
+        certificate_schema=cert,
     )
 
     try:
@@ -187,4 +188,4 @@ async def DEBUGrequest_services_list(request: web.BaseRequest):
                     raise web.HTTPRequestTimeout
             time.sleep(1)
 
-    raise web.HTTPNotFound("Try again!")
+    raise web.HTTPNotFound(reason="Try again!")

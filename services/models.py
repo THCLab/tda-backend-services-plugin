@@ -101,6 +101,9 @@ class ServiceRecord(BaseRecord):
         result = []
         for current in query:
             record = current.serialize()
+            if record.get("certificate_schema") == {}:
+                record.pop("certificate_schema", None)
+
             try:
                 record[
                     "consent_schema"
