@@ -80,9 +80,7 @@ async def apply(request: web.BaseRequest):
     credential_values.update(service_consent_copy)
 
     issuer: BaseIssuer = await context.inject(BaseIssuer)
-    credential = await issuer.create_credential_ex(
-        credential_values,
-    )
+    credential = await issuer.create_credential_ex(credential_values)
 
     service_appliance_data = service_user_data
     if isinstance(service_appliance_data, str):
@@ -154,6 +152,8 @@ async def apply(request: web.BaseRequest):
     consent_given_record = ConsentGivenRecord(connection_id=connection_id)
     await consent_given_record.credential_pds_set(context, credential)
     await consent_given_record.save(context)
+    record.user_consent_credential_dri = consent_given_record.credential_dri
+    await record.save(context)
 
     return web.json_response({"success": True, "exchange_id": record.exchange_id})
 
@@ -248,6 +248,8 @@ async def process_application(request: web.BaseRequest):
     issue.state = ServiceIssueRecord.ISSUE_ACCEPTED
     issue.report_data = report_data
     await issue.issuer_credential_pds_set(context, credential)
+    await pds_link_dri(context, issue.user_consent_credential_dri, issue.credential_id)
+
     await issue.save(context, reason="Accepted service issue, credential offer created")
     resp = ApplicationResponse(
         credential=credential,
@@ -263,37 +265,6 @@ async def process_application(request: web.BaseRequest):
             "connection_id": connection_id,
         }
     )
-
-
-async def test_():
-    context = await build_context()
-    payload = {
-        "associatedReportID": "Text",
-        "uniqueNumericIDHash": "Text",
-        "disease": "Text",
-        "vaccineDescription": "Text",
-        "atcCode": "Text",
-        "certificateIssuer": "Text",
-        "certificateNumber": "Text",
-        "certificateValidFrom": "Date",
-        "certificateValidTo": "Date",
-        "formVersion": "Text",
-    }
-    await pds_save_a(
-        context,
-        payload,
-        table="dip.data.tda.oca_chunks.predefined.9GdWoQwth9299oYj8HfdgRZjtSxW9sTVyy1RnfhQ35yJ",
-    )
-
-    result = await load_multiple(
-        context,
-        table="dip.data.tda.oca_chunks.predefined.9GdWoQwth9299oYj8HfdgRZjtSxW9sTVyy1RnfhQ35yJ",
-    )
-
-    print(result[0]["content"]["associatedReportID"])
-
-
-# run_standalone_async(__name__, test_)
 
 
 class GetIssueFilteredSchema(Schema):
@@ -469,3 +440,6 @@ async def DEBUGget_credential_data(request: web.BaseRequest):
     )
 
     return web.json_response({"success": True, "credential_data": query.payload})
+
+
+# run_standalone_async(__name__, test_)

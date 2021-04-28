@@ -47,6 +47,7 @@ class DiscoveryHandler(BaseHandler):
 
         usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
         records = await ServiceRecord.query_fully_serialized(context)
+        print("\n\n\nDiscoveryHandler records", records)
         response = DiscoveryResponse(services=records, usage_policy=usage_policy)
         response.assign_thread_from(context.message)
         await responder.send_reply(response)
@@ -66,6 +67,8 @@ class DiscoveryResponseHandler(BaseHandler):
 
         services = context.message.services
         trim_acapy_fields(services)
+        print("\n\n\nDiscoveryHandler records", services)
+        print("context.message", context.message)
 
         storage: BaseStorage = await context.inject(BaseStorage)
         services_serialized = json.dumps(services)
@@ -180,6 +183,8 @@ class DEBUGDiscoveryResponseHandler(BaseHandler):
 
         services = context.message.services
         trim_acapy_fields(services)
+        print("\n\n\nDiscoveryHandler records", services)
+        print("context.message", context.message)
 
         try:
             record = await DEBUGServiceDiscoveryRecord.retrieve_by_connection_id(

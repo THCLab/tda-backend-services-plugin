@@ -146,6 +146,11 @@ class ApplicationHandler(BaseHandler):
         )
 
         await issue.user_consent_credential_pds_set(context, consent)
+        await pds_link_dri(
+            context,
+            service["consent_schema"]["oca_data_dri"],
+            issue.user_consent_credential_dri,
+        )
 
         issue_id = await issue.save(context)
 
@@ -185,6 +190,9 @@ class ApplicationResponseHandler(BaseHandler):
         cred_str = context.message.credential
         credential = json.loads(cred_str, object_pairs_hook=OrderedDict)
         credential_data = context.message.credential_data
+
+        # TODO: Why is it saving twice? store_credential saves it to pds I think?
+        #  and pds_save_a saves it to pds
         credential_dri = await pds_save_a(
             context,
             credential_data,
@@ -201,6 +209,12 @@ class ApplicationResponseHandler(BaseHandler):
             self._logger.info("Stored Credential ID %s", credential_id)
         except HolderError as err:
             raise HandlerException(err.roll_up)
+
+        await pds_link_dri(
+            context,
+            issue.user_consent_credential_dri,
+            credential_id,
+        )
 
         issue.state = ServiceIssueRecord.ISSUE_CREDENTIAL_RECEIVED
         issue.report_data = context.message.report_data

@@ -98,6 +98,8 @@ class ServiceRecord(BaseRecord):
             post_filter_negative=negative_filter,
         )
 
+        print("QUERY: ", query)
+
         result = []
         for current in query:
             record = current.serialize()

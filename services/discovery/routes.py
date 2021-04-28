@@ -98,6 +98,7 @@ async def request_services_list(request: web.BaseRequest):
     context = request.app["request_context"]
     connection_id = request.match_info["connection_id"]
     outbound_handler = request.app["outbound_message_router"]
+    print("request_services_list")
 
     try:
         connection: ConnectionRecord = await ConnectionRecord.retrieve_by_id(
@@ -158,6 +159,7 @@ async def DEBUGrequest_services_list(request: web.BaseRequest):
     context = request.app["request_context"]
     connection_id = request.match_info["connection_id"]
     outbound_handler = request.app["outbound_message_router"]
+    print("debug_request_services_list")
 
     try:
         connection: ConnectionRecord = await ConnectionRecord.retrieve_by_id(
