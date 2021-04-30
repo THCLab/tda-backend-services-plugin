@@ -68,7 +68,7 @@ class ServiceIssueRecord(BaseRecord):
         user_consent_credential_dri: dict = None,
         credential_id: str = None,
         their_public_did: str = None,
-        report_data: dict = None,
+        report_data_dri: dict = None,
         exchange_id: str = None,
         record_id: str = None,
         **keywordArgs,
@@ -88,7 +88,7 @@ class ServiceIssueRecord(BaseRecord):
         self.credential_id = credential_id
         self.their_public_did = their_public_did
         self.user_consent_credential_dri = user_consent_credential_dri
-        self.report_data = report_data
+        self.report_data_dri = report_data_dri
 
     @property
     def record_value(self) -> dict:
@@ -110,7 +110,7 @@ class ServiceIssueRecord(BaseRecord):
                 "user_consent_credential_dri",
                 "credential_id",
                 "their_public_did",
-                "report_data",
+                "report_data_dri",
             )
         }
 
@@ -152,6 +152,7 @@ class ServiceIssueRecord(BaseRecord):
         if isinstance(credential, str):
             credential = json.loads(credential)
         self.credential_id = await pds_save_a(context, credential)
+        return self.credential_id
 
     async def issuer_credential_pds_get(self, context):
         if self.credential_id is None:
@@ -240,4 +241,4 @@ class ServiceIssueRecordSchema(BaseRecordSchema):
     credential_id = fields.Str(required=False)
     service_user_data_dri = fields.Str(required=False)
     their_public_did = fields.Str(required=False)
-    report_data = fields.Dict()
+    report_data_dri = fields.Str(required=False)

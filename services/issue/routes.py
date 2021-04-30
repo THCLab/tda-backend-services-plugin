@@ -169,6 +169,18 @@ class ProcessApplicationSchema(Schema):
     data = fields.Dict(required=True)
 
 
+async def link_report(context, cred_dri, report_data_dri, exchange_id):
+
+    report_pointer_dri = await pds_save_a(
+        context,
+        {"dri": report_data_dri},
+        oca_schema_dri="dip.data.tda.raport." + exchange_id,
+    )
+
+    await pds_link_dri(context, cred_dri, report_pointer_dri)
+    await pds_link_dri(context, report_pointer_dri, report_data_dri)
+
+
 @docs(
     tags=["Verifiable Services"],
     summary="Decide whether application should be accepted or rejected",
@@ -187,7 +199,6 @@ async def process_application(request: web.BaseRequest):
     context = request.app["request_context"]
     params = await request.json()
     issue_id = params["issue_id"]
-    report_data = params["data"]
 
     issue: ServiceIssueRecord = await retrieve_service_issue(context, issue_id)
     exchange_id = issue.exchange_id
@@ -213,10 +224,23 @@ async def process_application(request: web.BaseRequest):
             }
         )
 
+    ## TODO: We are assuming here that report_data is required!!
+    ##       it could be either report_data or user_data
+    # Report data should be the replacement of user_data
+    # By user data I mean the data user sent with his application
+    # It should be linked with certificate
+    report_data = params.get("data")
+    issue.report_data_dri = await pds_save_a(context, report_data)
+    ### user_data_dri = issue.service_user_data_dri
+    ### user_data = await pds_load(context, user_data_dri)
+    # Here we are deciding what to put into the credential
+    # it can be either the data that user filled out when applying
+    # or the certificate schema which is fetched from the pds
+    # and filled with associatedReportID
     cred_schem_dri = service.service_schema.get("oca_schema_dri")
     cred_namspc = service.service_schema.get("oca_schema_namespace")
-    cred_data_dri = issue.service_user_data_dri
-    cred_data = await pds_load(context, cred_data_dri)
+    cred_data_dri = issue.report_data_dri
+    cred_data = report_data
     if service.certificate_schema:
         cred_schem_dri = service.certificate_schema["oca_schema_dri"]
         cred_namspc = service.certificate_schema["oca_schema_namespace"]
@@ -225,6 +249,8 @@ async def process_application(request: web.BaseRequest):
         if certificate is None:
             raise web.HTTPNotFound(reason="certificate_schema not found")
 
+        # This should be a link that ties together
+        # the report in acapy database and certificate in pds
         certificate["associatedReportID"] = issue.exchange_id
 
         cred_data = certificate
@@ -234,6 +260,9 @@ async def process_application(request: web.BaseRequest):
             table="dip.data.tda.oca_chunks." + cred_schem_dri,
         )
 
+    # Credential should be either filled in with user_data or
+    # with the certificate data the service specified a certificate
+    # Should it also be possibly filled with data that the issuer adjusted??
     issuer: BaseIssuer = await context.inject(BaseIssuer)
     credential = await issuer.create_credential_ex(
         {
@@ -246,9 +275,10 @@ async def process_application(request: web.BaseRequest):
     )
 
     issue.state = ServiceIssueRecord.ISSUE_ACCEPTED
-    issue.report_data = report_data
-    await issue.issuer_credential_pds_set(context, credential)
-    await pds_link_dri(context, issue.user_consent_credential_dri, issue.credential_id)
+
+    cred_dri = await issue.issuer_credential_pds_set(context, credential)
+    await pds_link_dri(context, issue.user_consent_credential_dri, cred_dri)
+    await link_report(context, cred_dri, issue.report_data_dri, issue.exchange_id)
 
     await issue.save(context, reason="Accepted service issue, credential offer created")
     resp = ApplicationResponse(

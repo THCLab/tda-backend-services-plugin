@@ -1,4 +1,5 @@
 # Acapy
+from ..issue.routes import link_report
 from aries_cloudagent.messaging.base_handler import (
     BaseHandler,
     BaseResponder,
@@ -117,12 +118,6 @@ class ApplicationHandler(BaseHandler):
                 f"Credential failed the verification process {consent}"
             )
 
-        """
-
-        Pack save confirm
-
-        """
-
         user_data_dri = await pds_save_a(
             context,
             context.message.service_user_data,
@@ -183,48 +178,43 @@ class ApplicationResponseHandler(BaseHandler):
             await ServiceIssueRecord.retrieve_by_exchange_id_and_connection_id(
                 context,
                 context.message.exchange_id,
-                context.connection_record.connection_id,
+                responder.connection_id,
             )
         )
 
-        cred_str = context.message.credential
-        credential = json.loads(cred_str, object_pairs_hook=OrderedDict)
-        credential_data = context.message.credential_data
-
-        # TODO: Why is it saving twice? store_credential saves it to pds I think?
-        #  and pds_save_a saves it to pds
-        credential_dri = await pds_save_a(
-            context,
-            credential_data,
-            oca_schema_dri=credential["credentialSubject"]["oca_schema_dri"],
-        )
-
         try:
+            credential = json.loads(
+                context.message.credential, object_pairs_hook=OrderedDict
+            )
             holder: BaseHolder = await context.inject(BaseHolder)
-            credential_id = await holder.store_credential(
+            credential_dri = await holder.store_credential(
                 credential_definition={},
                 credential_data=credential,
                 credential_request_metadata={},
             )
-            self._logger.info("Stored Credential ID %s", credential_id)
+            self._logger.info("Stored Credential ID %s", credential_dri)
         except HolderError as err:
             raise HandlerException(err.roll_up)
 
         await pds_link_dri(
             context,
             issue.user_consent_credential_dri,
-            credential_id,
+            credential_dri,
         )
 
+        issue.report_data_dri = await pds_save_a(context, context.message.report_data)
+        await link_report(
+            context, credential_dri, issue.report_data_dri, issue.exchange_id
+        )
+        issue.credential_id = credential_dri
         issue.state = ServiceIssueRecord.ISSUE_CREDENTIAL_RECEIVED
-        issue.report_data = context.message.report_data
-        issue.credential_id = credential_id
+
         await issue.save(context)
 
         await responder.send_webhook(
             "verifiable-services/credential-received",
             {
-                "credential_id": credential_id,
+                "credential_dri": credential_dri,
                 "connection_id": responder.connection_id,
             },
         )
