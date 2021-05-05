@@ -182,6 +182,7 @@ class ApplicationResponseHandler(BaseHandler):
             )
         )
 
+        credential_dri = None
         try:
             credential = json.loads(
                 context.message.credential, object_pairs_hook=OrderedDict
@@ -196,11 +197,15 @@ class ApplicationResponseHandler(BaseHandler):
         except HolderError as err:
             raise HandlerException(err.roll_up)
 
-        await pds_link_dri(
-            context,
-            issue.user_consent_credential_dri,
-            credential_dri,
-        )
+        print("Source dri:", issue.user_consent_credential_dri)
+        try:
+            await pds_link_dri(
+                context,
+                issue.user_consent_credential_dri,
+                credential_dri,
+            )
+        except PDSError as err:
+            self._logger.error("%s", err.roll_up)
 
         issue.report_data_dri = await pds_save_a(context, context.message.report_data)
         await link_report(

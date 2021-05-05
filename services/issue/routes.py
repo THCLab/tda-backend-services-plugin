@@ -177,8 +177,11 @@ async def link_report(context, cred_dri, report_data_dri, exchange_id):
         oca_schema_dri="dip.data.tda.raport." + exchange_id,
     )
 
-    await pds_link_dri(context, cred_dri, report_pointer_dri)
-    await pds_link_dri(context, report_pointer_dri, report_data_dri)
+    try:
+        await pds_link_dri(context, cred_dri, report_pointer_dri)
+        await pds_link_dri(context, report_pointer_dri, report_data_dri)
+    except PDSError as err:
+        LOGGER.error("%s", err)
 
 
 @docs(

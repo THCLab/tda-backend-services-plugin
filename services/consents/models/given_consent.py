@@ -41,7 +41,9 @@ class ConsentGivenRecord(BaseRecord):
     async def credential_pds_set(self, context, credential):
         if isinstance(credential, str):
             credential = json.loads(credential)
-        self.credential_dri = await pds_save_a(context, credential)
+        self.credential_dri = await pds_save_a(
+            context, credential, table="consent_given"
+        )
 
     async def credential_pds_get(self, context):
         if self.credential_dri is None:

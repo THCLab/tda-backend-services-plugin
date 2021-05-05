@@ -184,6 +184,7 @@ async def DEBUGrequest_services_list(request: web.BaseRequest):
                         context, connection_id
                     )
                 )
+                await query.delete_record(context)
                 return web.json_response({"success": True, "result": query.serialize()})
             except StorageNotFoundError:
                 if i >= max_retries:
