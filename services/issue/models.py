@@ -164,6 +164,7 @@ class ServiceIssueRecord(BaseRecord):
         if isinstance(credential, str):
             credential = json.loads(credential)
         self.user_consent_credential_dri = await pds_save_a(context, credential)
+        return self.user_consent_credential_dri
 
     async def user_consent_credential_pds_get(self, context):
         if self.user_consent_credential_dri is None:

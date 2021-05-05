@@ -152,7 +152,8 @@ async def apply(request: web.BaseRequest):
     consent_given_record = ConsentGivenRecord(connection_id=connection_id)
     await consent_given_record.credential_pds_set(context, credential)
     await consent_given_record.save(context)
-    record.user_consent_credential_dri = consent_given_record.credential_dri
+    await record.user_consent_credential_pds_set(context, credential)
+    # record.user_consent_credential_dri = consent_given_record.credential_dri
     await record.save(context)
 
     return web.json_response({"success": True, "exchange_id": record.exchange_id})
@@ -177,11 +178,8 @@ async def link_report(context, cred_dri, report_data_dri, exchange_id):
         oca_schema_dri="dip.data.tda.raport." + exchange_id,
     )
 
-    try:
-        await pds_link_dri(context, cred_dri, report_pointer_dri)
-        await pds_link_dri(context, report_pointer_dri, report_data_dri)
-    except PDSError as err:
-        LOGGER.error("%s", err)
+    await pds_link_dri(context, cred_dri, report_pointer_dri)
+    await pds_link_dri(context, report_pointer_dri, report_data_dri)
 
 
 @docs(

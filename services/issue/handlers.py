@@ -140,11 +140,11 @@ class ApplicationHandler(BaseHandler):
             their_public_did=context.message.public_did,
         )
 
-        await issue.user_consent_credential_pds_set(context, consent)
+        consent_cred_dri = await issue.user_consent_credential_pds_set(context, consent)
         await pds_link_dri(
             context,
             service["consent_schema"]["oca_data_dri"],
-            issue.user_consent_credential_dri,
+            consent_cred_dri,
         )
 
         issue_id = await issue.save(context)
@@ -197,15 +197,11 @@ class ApplicationResponseHandler(BaseHandler):
         except HolderError as err:
             raise HandlerException(err.roll_up)
 
-        print("Source dri:", issue.user_consent_credential_dri)
-        try:
-            await pds_link_dri(
-                context,
-                issue.user_consent_credential_dri,
-                credential_dri,
-            )
-        except PDSError as err:
-            self._logger.error("%s", err.roll_up)
+        await pds_link_dri(
+            context,
+            issue.user_consent_credential_dri,
+            credential_dri,
+        )
 
         issue.report_data_dri = await pds_save_a(context, context.message.report_data)
         await link_report(
