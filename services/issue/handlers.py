@@ -184,6 +184,7 @@ class ApplicationResponseHandler(BaseHandler):
 
         credential_dri = None
         try:
+            await pds_save_a(context, context.message.credential_data)
             credential = json.loads(
                 context.message.credential, object_pairs_hook=OrderedDict
             )
