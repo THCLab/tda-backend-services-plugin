@@ -422,8 +422,12 @@ async def query_report(request: web.BaseRequest):
     result = await get_issue_self_(context, {"exchange_id": report_id})
     if len(result) == 0:
         return web.json_response({})
-    result = result[0]
-    return web.json_response(result["report_data"])
+    try:
+        result = result[0]
+        result = await pds_load(context, result["report_data_dri"])
+    except:
+        return web.json_response("report not found in issue")
+    return web.json_response(result)
 
 
 class GetIssueByIdSchema(Schema):
