@@ -161,7 +161,7 @@ async def apply(context, connection_id, service_id, service_user_data):
 
 
 @docs(
-    tags=["Verifiable Services"],
+    tags=["Services"],
     summary="Apply to a service that connected agent provides",
 )
 @response_schema(Model.MineApplication)
@@ -256,6 +256,7 @@ async def _process_application_endpoint(request):
 
 @response_schema(Model.Application)
 @match_info_schema(Model.ApplicationsApplianceUuidAcceptInput.Put.Path)
+@docs(tags=["Services"])
 async def application_accept_endpoint(request: web.BaseRequest):
     result = await _process_application_endpoint(request)
     return result
@@ -263,45 +264,10 @@ async def application_accept_endpoint(request: web.BaseRequest):
 
 @response_schema(Model.Application)
 @match_info_schema(Model.ApplicationsApplianceUuidRejectInput.Put.Path)
+@docs(tags=["Services"])
 async def application_reject_endpoint(request: web.BaseRequest):
     result = await _process_application_endpoint(request)
     return result
-
-
-async def test_setup_application_handler():
-    import random
-
-    context, conn_applicant, service = await test_setup_for_apply()
-    conn_service_provider = await add_connection(context)
-    user_data = {"user_data": "cool_data" + str(random.randint(0, 11111))}
-    message, record = await apply(context, conn_applicant._id, service._id, user_data)
-    request, record = await application_handler(
-        context, message, conn_service_provider._id
-    )
-    return context, request, record, conn_applicant
-
-
-async def test_full_process():
-    context, request, record, conn_applicant = await test_setup_application_handler()
-    err, msg, record = await process_application(context, record._id, True)
-    resp = await application_response_handler(context, msg, conn_applicant._id)
-
-
-async def test_process_application():
-    async def test_process_application_endpoint(function):
-        (
-            context,
-            request,
-            record,
-            conn_applicant,
-        ) = await test_setup_application_handler()
-        web_request = build_request_stub(
-            context, match_info={"appliance_uuid": record._id}
-        )
-        await call_endpoint_validate(function, web_request)
-
-    await test_process_application_endpoint(application_accept_endpoint)
-    await test_process_application_endpoint(application_reject_endpoint)
 
 
 async def add_service(context, label, service_schema_dri, consent_dri):
@@ -339,11 +305,50 @@ async def add_service_endpoint(request: web.BaseRequest):
     ctx = request.app["request_context"]
     body = await request.json()
     consent_id = body.get("consent_dri")
-    r = await add_service(ctx, body["label"], body["service_schema_dri"], consent_id)
+    service = await add_service(
+        ctx, body["label"], body["service_schema_dri"], consent_id
+    )
 
-    result = r.serialize()
-    result["service_uuid"] = r._id
+    result = service.serialize()
+    result["service_uuid"] = service._id
     return web.json_response(result, status=201)
+
+
+async def test_setup_application_handler():
+    import random
+
+    context, conn_applicant, service = await test_setup_for_apply()
+    conn_service_provider = await add_connection(context)
+    user_data = {"user_data": "cool_data" + str(random.randint(0, 11111))}
+    message, record = await apply(context, conn_applicant._id, service._id, user_data)
+    request, record = await application_handler(
+        context, message, conn_service_provider._id
+    )
+    return context, request, record, conn_applicant
+
+
+async def test_full_process():
+    context, request, record, conn_applicant = await test_setup_application_handler()
+    err, msg, record = await process_application(context, record._id, True)
+    resp = await application_response_handler(context, msg, conn_applicant._id)
+    return context
+
+
+async def test_process_application():
+    async def test_process_application_endpoint(function):
+        (
+            context,
+            request,
+            record,
+            conn_applicant,
+        ) = await test_setup_application_handler()
+        web_request = build_request_stub(
+            context, match_info={"appliance_uuid": record._id}
+        )
+        await call_endpoint_validate(function, web_request)
+
+    await test_process_application_endpoint(application_accept_endpoint)
+    await test_process_application_endpoint(application_reject_endpoint)
 
 
 async def test_add_service_endpoint():
@@ -394,11 +399,32 @@ async def test_apply():
     assert apply_res["service_user_data"] == user_data
 
 
+async def test_get_service_issues():
+    # mine applications (pending applications I sent)
+    # other applications (pending)
+    context, connectA, service = await test_setup_for_apply()
+    connectB = await add_connection(context)
+
+    message, record = await apply(
+        context, connectA.connection_id, service._id, {"user": "data"}
+    )
+    request, record = await application_handler(
+        context, message, connectB.connection_id
+    )
+    records = await ServiceIssueRecord.query(
+        context, {"state": ServiceIssueRecord.ISSUE_PENDING}
+    )
+    print(records)
+    # for i in records:
+    #     print(i.state)
+
+
 async def main():
     await test_apply()
     await test_add_service_endpoint()
     await test_process_application()
     await test_full_process()
+    await test_get_service_issues()
 
 
 run_standalone_async(__name__, main)
@@ -432,7 +458,7 @@ async def get_service_endpoint(request: web.BaseRequest):
             context, service_uuid
         )
     except StorageNotFoundError as err:
-        raise web.HTTPNotFound(err.roll_up)
+        raise web.HTTPNotFound(reason=err.roll_up)
 
     result["service_uuid"] = service_uuid
     return web.json_response(result)
