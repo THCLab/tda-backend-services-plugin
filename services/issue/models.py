@@ -26,7 +26,6 @@ class ServiceIssueRecord(BaseRecord):
     RECORD_ID_NAME = "record_id"
     RECORD_TYPE = "service_issue"
 
-    ISSUE_WAITING_FOR_RESPONSE = "no response"
     ISSUE_SERVICE_NOT_FOUND = "service not found"
     ISSUE_PENDING = "pending"
     ISSUE_REJECTED = "rejected"

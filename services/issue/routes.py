@@ -110,15 +110,16 @@ async def apply(context, connection_id, service_id, service_user_data):
             reason=f"Error occured while creating a credential [{err.roll_up}]"
         )
 
+    print("service_user_data:", service_user_data)
     service_user_data_dri = await pds_save(
         context,
-        service_user_data,
+        json.dumps(service_user_data),
         oca_schema_dri=seek["service_schema_dri"],
     )
 
     record = ServiceIssueRecord(
         connection_id=connection_id,
-        state=ServiceIssueRecord.ISSUE_WAITING_FOR_RESPONSE,
+        state=ServiceIssueRecord.ISSUE_PENDING,
         author=ServiceIssueRecord.AUTHOR_SELF,
         label=seek["label"],
         service_consent_schema={
@@ -131,15 +132,6 @@ async def apply(context, connection_id, service_id, service_user_data):
         service_consent_match_id=service_consent_match_id,
     )
     await record.save(context)
-    """ 
-    service_user_data_dri - is here so that in the future it would be easier
-    to not send the service_user_data, because from what I understand we only
-    want to send that to the other party under certain conditions
-
-    dri is used only to make sure DRI's are the same 
-    when I store the data in other's agent PDS
-
-    """
 
     public_did = await get_public_did(context)
     request = Application(
@@ -179,15 +171,16 @@ async def apply_endpoint(request: web.BaseRequest):
     await outbound_handler(request, connection_id=connection_id)
 
     record.service_consent_schema.pop("usage_policy", None)
-    result = {
-        "connection_uuid": record.connection_id,
-        "appliance_uuid": record._id,
-        "service_uuid": record.service_id,
-        "consent": record.service_consent_schema,
-        "service": {"oca_schema_dri": record.service_schema_dri},
-        "service_user_data": user_data,
-    }
-    return web.json_response(result)
+    return web.json_response(
+        {
+            "connection_uuid": record.connection_id,
+            "appliance_uuid": record._id,
+            "service_uuid": record.service_id,
+            "consent": record.service_consent_schema,
+            "service": {"oca_schema_dri": record.service_schema_dri},
+            "service_user_data": user_data,
+        }
+    )
 
 
 async def send_confirmation(outbound_handler, connection_id, exchange_id, state):
@@ -399,24 +392,85 @@ async def test_apply():
     assert apply_res["service_user_data"] == user_data
 
 
+async def serialize_as_applications(context, records, mine=False):
+    result = []
+    for count, i in enumerate(records):
+        service = await ServiceRecord.retrieve_by_id(context, i.service_id)
+        consent_data = await pds_load(context, service.consent_dri, with_meta=True)
+        if consent_data["content"].get("usage_policy") == None:
+            consent_data["content"].pop("usage_policy", None)
+
+        result.append(
+            {
+                "consent": {
+                    "oca_data": consent_data["content"],
+                    "oca_schema_dri": consent_data["oca_schema_dri"],
+                },
+                "connection_uuid": i.connection_id,
+                "appliance_uuid": i._id,
+                "service_uuid": i.service_id,
+                "service": {"oca_schema_dri": service.service_schema_dri},
+            }
+        )
+        if mine:
+            service_user_data = await pds_load(context, i.service_user_data_dri)
+            result[count]["service_user_data"] = service_user_data
+
+    return result
+
+
+@docs(
+    tags=["Services"],
+    summary="Queries for all pending applications that others applied to",
+)
+@response_schema(Model.ArrayOfApplications)
+async def other_applications_endpoint(request: web.BaseRequest):
+    context = request.app["request_context"]
+    records = await ServiceIssueRecord.query(
+        context,
+        {
+            "state": ServiceIssueRecord.ISSUE_PENDING,
+            "author": ServiceIssueRecord.AUTHOR_OTHER,
+        },
+    )
+    result = await serialize_as_applications(context, records)
+    return web.json_response(result)
+
+
+@docs(
+    tags=["Services"],
+    summary="Queries for all pending applications that I have applied to",
+)
+@response_schema(Model.ArrayOfMineApplications)
+async def mine_applications_endpoint(request: web.BaseRequest):
+    context = request.app["request_context"]
+    records = await ServiceIssueRecord.query(
+        context,
+        {
+            "state": ServiceIssueRecord.ISSUE_PENDING,
+            "author": ServiceIssueRecord.AUTHOR_SELF,
+        },
+    )
+    result = await serialize_as_applications(context, records, True)
+    return web.json_response(result)
+
+
 async def test_get_service_issues():
-    # mine applications (pending applications I sent)
-    # other applications (pending)
     context, connectA, service = await test_setup_for_apply()
     connectB = await add_connection(context)
-
     message, record = await apply(
         context, connectA.connection_id, service._id, {"user": "data"}
     )
     request, record = await application_handler(
         context, message, connectB.connection_id
     )
-    records = await ServiceIssueRecord.query(
-        context, {"state": ServiceIssueRecord.ISSUE_PENDING}
+
+    await call_endpoint_validate(
+        other_applications_endpoint, build_request_stub(context)
     )
-    print(records)
-    # for i in records:
-    #     print(i.state)
+    await call_endpoint_validate(
+        mine_applications_endpoint, build_request_stub(context)
+    )
 
 
 async def main():
