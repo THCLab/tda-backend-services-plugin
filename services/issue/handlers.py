@@ -36,7 +36,7 @@ async def application_handler(context, msg, connection_id):
     consent = json.loads(consent, object_pairs_hook=OrderedDict)
 
     try:
-        service: ServiceRecord = await ServiceRecord.retrieve_by_id_fully_serialized(
+        service: ServiceRecord = await ServiceRecord.retrieve_by_id(
             context, msg.service_id
         )
     except StorageNotFoundError as err:
@@ -48,7 +48,7 @@ async def application_handler(context, msg, connection_id):
     Verify consent against these three vars from service requirements
 
     """
-    data_dri = service["consent_dri"]
+    data_dri = service.consent_dri
     cred_content = consent["credentialSubject"]
     is_malformed = cred_content["dri"] != data_dri
 
@@ -66,8 +66,7 @@ async def application_handler(context, msg, connection_id):
 
     print("msg.service_user_data:", msg.service_user_data)
     user_data_dri = await pds_save(
-        context,
-        json.dumps(msg.service_user_data),
+        context, msg.service_user_data, oca_schema_dri=service.service_schema_dri
     )
     assert user_data_dri == msg.service_user_data_dri, (
         user_data_dri,
@@ -82,7 +81,7 @@ async def application_handler(context, msg, connection_id):
         service_id=msg.service_id,
         service_consent_match_id=msg.service_consent_match_id,
         service_user_data_dri=user_data_dri,
-        label=service["label"],
+        label=service.label,
         their_public_did=msg.public_did,
     )
 

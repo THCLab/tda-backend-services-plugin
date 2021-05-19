@@ -113,7 +113,7 @@ async def apply(context, connection_id, service_id, service_user_data):
     print("service_user_data:", service_user_data)
     service_user_data_dri = await pds_save(
         context,
-        json.dumps(service_user_data),
+        service_user_data,
         oca_schema_dri=seek["service_schema_dri"],
     )
 
@@ -307,91 +307,6 @@ async def add_service_endpoint(request: web.BaseRequest):
     return web.json_response(result, status=201)
 
 
-async def test_setup_application_handler():
-    import random
-
-    context, conn_applicant, service = await test_setup_for_apply()
-    conn_service_provider = await add_connection(context)
-    user_data = {"user_data": "cool_data" + str(random.randint(0, 11111))}
-    message, record = await apply(context, conn_applicant._id, service._id, user_data)
-    request, record = await application_handler(
-        context, message, conn_service_provider._id
-    )
-    return context, request, record, conn_applicant
-
-
-async def test_full_process():
-    context, request, record, conn_applicant = await test_setup_application_handler()
-    err, msg, record = await process_application(context, record._id, True)
-    resp = await application_response_handler(context, msg, conn_applicant._id)
-    return context
-
-
-async def test_process_application():
-    async def test_process_application_endpoint(function):
-        (
-            context,
-            request,
-            record,
-            conn_applicant,
-        ) = await test_setup_application_handler()
-        web_request = build_request_stub(
-            context, match_info={"appliance_uuid": record._id}
-        )
-        await call_endpoint_validate(function, web_request)
-
-    await test_process_application_endpoint(application_accept_endpoint)
-    await test_process_application_endpoint(application_reject_endpoint)
-
-
-async def test_add_service_endpoint():
-    context = await build_context("local")
-    consent = await add_consent(context, "asd", {}, "test_consent_dri")
-    await call_endpoint_validate(
-        add_service_endpoint,
-        build_request_stub(
-            context,
-            {
-                "consent_dri": consent.dri,
-                "label": "TestService",
-                "service_schema_dri": "12345",
-            },
-        ),
-    )
-
-
-async def test_setup_for_apply():
-    context = await build_context("local")
-    consent = await add_consent(context, "asd", {"test_apply": "a"}, "test_consent_dri")
-    service = await add_service(context, "test_", "test_apply", consent.dri)
-    connect = await add_connection(context)
-    services = await service.query_fully_serialized(context)
-
-    await cache_requested_services(context, connect._id, json.dumps(services))
-    await create_public_did(context)
-    return context, connect, service
-
-
-async def test_apply():
-    context, connect, service = await test_setup_for_apply()
-    user_data = {"user_data": "cool_data"}
-    apply_res = await call_endpoint_validate(
-        apply_endpoint,
-        build_request_stub(
-            context,
-            {
-                "user_data": user_data,
-                "service_uuid": service._id,
-                "connection_uuid": connect._id,
-            },
-        ),
-    )
-    apply_res = json.loads(apply_res.body)
-    assert apply_res["connection_uuid"] == connect._id
-    assert apply_res["service_uuid"] == service._id
-    assert apply_res["service_user_data"] == user_data
-
-
 async def serialize_as_applications(context, records, mine=False):
     result = []
     for count, i in enumerate(records):
@@ -453,6 +368,91 @@ async def mine_applications_endpoint(request: web.BaseRequest):
     )
     result = await serialize_as_applications(context, records, True)
     return web.json_response(result)
+
+
+async def test_setup_application_handler():
+    import random
+
+    context, conn_applicant, service = await test_setup_for_apply()
+    conn_service_provider = await add_connection(context)
+    user_data = {"user_data": "cool_data" + str(random.randint(0, 11111))}
+    message, record = await apply(context, conn_applicant._id, service._id, user_data)
+    request, record = await application_handler(
+        context, message, conn_service_provider._id
+    )
+    return context, request, record, conn_applicant
+
+
+async def test_full_process():
+    context, request, record, conn_applicant = await test_setup_application_handler()
+    err, msg, record = await process_application(context, record._id, True)
+    resp = await application_response_handler(context, msg, conn_applicant._id)
+    return context
+
+
+async def test_process_application():
+    async def test_process_application_endpoint(function):
+        (
+            context,
+            request,
+            record,
+            conn_applicant,
+        ) = await test_setup_application_handler()
+        web_request = build_request_stub(
+            context, match_info={"appliance_uuid": record._id}
+        )
+        await call_endpoint_validate(function, web_request)
+
+    await test_process_application_endpoint(application_accept_endpoint)
+    await test_process_application_endpoint(application_reject_endpoint)
+
+
+async def test_add_service_endpoint():
+    context = await build_context()
+    consent = await add_consent(context, "asd", {}, "test_consent_dri")
+    await call_endpoint_validate(
+        add_service_endpoint,
+        build_request_stub(
+            context,
+            {
+                "consent_dri": consent.dri,
+                "label": "TestService",
+                "service_schema_dri": "12345",
+            },
+        ),
+    )
+
+
+async def test_setup_for_apply():
+    context = await build_context()
+    consent = await add_consent(context, "asd", {"test_apply": "a"}, "test_consent_dri")
+    service = await add_service(context, "test_", "test_apply", consent.dri)
+    connect = await add_connection(context)
+    services = await service.query_fully_serialized(context)
+
+    await cache_requested_services(context, connect._id, json.dumps(services))
+    await create_public_did(context)
+    return context, connect, service
+
+
+async def test_apply():
+    context, connect, service = await test_setup_for_apply()
+    user_data = {"user_data": "cool_data"}
+    apply_res = await call_endpoint_validate(
+        apply_endpoint,
+        build_request_stub(
+            context,
+            {
+                "user_data": user_data,
+                "service_uuid": service._id,
+                "connection_uuid": connect._id,
+            },
+        ),
+    )
+    apply_res = json.loads(apply_res.body)
+    assert apply_res["connection_uuid"] == connect._id
+    assert apply_res["service_uuid"] == service._id
+    assert apply_res["service_user_data"] == user_data
 
 
 async def test_get_service_issues():
@@ -550,20 +550,11 @@ services_routes = [
         request_services_endpoint,
         allow_head=False,
     ),
-    web.get(
-        "/services",
-        get_services_endpoint,
-        allow_head=False,
-    ),
-    web.get(
-        "/services/{service_uuid}",
-        get_service_endpoint,
-        allow_head=False,
-    ),
-    web.post(
-        "/services/add",
-        add_service_endpoint,
-    ),
+    web.get("/services", get_services_endpoint, allow_head=False),
+    web.get("/services/{service_uuid}", get_service_endpoint, allow_head=False),
+    web.post("/services/add", add_service_endpoint),
+    web.get("/applications/mine", mine_applications_endpoint, allow_head=False),
+    web.get("/applications/others", other_applications_endpoint, allow_head=False),
     web.post("/services/apply", apply_endpoint),
     web.put("/applications/{appliance_uuid}/accept", application_accept_endpoint),
     web.post("/applications/{appliance_uuid}/reject", application_reject_endpoint),
