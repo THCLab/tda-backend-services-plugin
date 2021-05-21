@@ -100,7 +100,7 @@ class ServiceRecord(BaseRecord):
                         "exception": err.roll_up,
                     }
 
-            record["service_uuid"] = current._id
+            record["service_id"] = current._id
 
             result.append(record)
 

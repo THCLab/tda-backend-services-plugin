@@ -37,7 +37,7 @@ from aries_cloudagent.config.global_variables import CONSENT_GIVEN_DRI
 
 LOGGER = logging.getLogger(__name__)
 
-# appliance_uuid == ServiceIssueRecord._id
+# appliance_id == ServiceIssueRecord._id
 
 
 class ApplySchema(Schema):
@@ -65,7 +65,7 @@ async def seek_other_agent_service(storage, connection_id, service_id):
         records = await search.fetch_single()
     except StorageNotFoundError:
         raise web.HTTPNotFound(
-            reason="Service, pointed by connection_uuid, not found",
+            reason="Service, pointed by connection_id, not found",
         )
     await search.close()
 
@@ -73,12 +73,12 @@ async def seek_other_agent_service(storage, connection_id, service_id):
 
     seek = None  # seek record
     for i in records:
-        if i["service_uuid"] == service_id:
+        if i["service_id"] == service_id:
             seek = i
 
     if seek is None:
         raise web.HTTPNotFound(
-            reason="Service, pointed by connection_uuid and service_uuid, not found",
+            reason="Service, pointed by connection_id and service_id, not found",
         )
     return seek
 
@@ -110,7 +110,7 @@ async def apply(context, connection_id, service_id, service_user_data):
             reason=f"Error occured while creating a credential [{err.roll_up}]"
         )
 
-    print("service_user_data:", service_user_data)
+    service_user_data = json.dumps(service_user_data)
     service_user_data_dri = await pds_save(
         context,
         service_user_data,
@@ -163,9 +163,9 @@ async def apply_endpoint(request: web.BaseRequest):
     outbound_handler = request.app["outbound_message_router"]
 
     params = await request.json()
-    connection_id = params["connection_uuid"]
+    connection_id = params["connection_id"]
     user_data = params["user_data"]
-    service_id = params["service_uuid"]
+    service_id = params["service_id"]
 
     request, record = await apply(context, connection_id, service_id, user_data)
     await outbound_handler(request, connection_id=connection_id)
@@ -173,9 +173,9 @@ async def apply_endpoint(request: web.BaseRequest):
     record.service_consent_schema.pop("usage_policy", None)
     return web.json_response(
         {
-            "connection_uuid": record.connection_id,
-            "appliance_uuid": record._id,
-            "service_uuid": record.service_id,
+            "connection_id": record.connection_id,
+            "appliance_id": record._id,
+            "service_id": record.service_id,
             "consent": record.service_consent_schema,
             "service": {"oca_schema_dri": record.service_schema_dri},
             "service_user_data": user_data,
@@ -223,7 +223,7 @@ async def process_application(context, issue_id, accept: bool):
 async def _process_application_endpoint(request):
     outbound_handler = request.app["outbound_message_router"]
     context = request.app["request_context"]
-    apply_id = request.match_info["appliance_uuid"]
+    apply_id = request.match_info["appliance_id"]
     err, msg, issue = await process_application(context, apply_id, True)
 
     if err:
@@ -238,9 +238,9 @@ async def _process_application_endpoint(request):
 
     return web.json_response(
         {
-            "connection_uuid": issue.connection_id,
-            "appliance_uuid": issue._id,
-            "service_uuid": issue.service_id,
+            "connection_id": issue.connection_id,
+            "appliance_id": issue._id,
+            "service_id": issue.service_id,
             "consent": consent.serialize(),
             "service": {"oca_schema_dri": service.service_schema_dri},
         }
@@ -303,28 +303,36 @@ async def add_service_endpoint(request: web.BaseRequest):
     )
 
     result = service.serialize()
-    result["service_uuid"] = service._id
+    result["service_id"] = service._id
     return web.json_response(result, status=201)
 
 
 async def serialize_as_applications(context, records, mine=False):
     result = []
     for count, i in enumerate(records):
-        service = await ServiceRecord.retrieve_by_id(context, i.service_id)
-        consent_data = await pds_load(context, service.consent_dri, with_meta=True)
-        if consent_data["content"].get("usage_policy") == None:
-            consent_data["content"].pop("usage_policy", None)
+        if mine:
+            service_schema_dri = i.service_schema_dri
+            consent_data = i.service_consent_schema
+        else:
+            service = await ServiceRecord.retrieve_by_id(context, i.service_id)
+            service_schema_dri = service.service_schema_dri
+            consent_data = await pds_load(context, service.consent_dri, with_meta=True)
+            consent_data["content"]["oca_schema_dri"] = consent_data["oca_schema_dri"]
+            consent_data = consent_data["content"]
+
+        if consent_data.get("usage_policy") == None:
+            consent_data.pop("usage_policy", None)
 
         result.append(
             {
                 "consent": {
-                    "oca_data": consent_data["content"],
+                    "oca_data": consent_data["oca_data"],
                     "oca_schema_dri": consent_data["oca_schema_dri"],
                 },
-                "connection_uuid": i.connection_id,
-                "appliance_uuid": i._id,
-                "service_uuid": i.service_id,
-                "service": {"oca_schema_dri": service.service_schema_dri},
+                "connection_id": i.connection_id,
+                "appliance_id": i._id,
+                "service_id": i.service_id,
+                "service": {"oca_schema_dri": service_schema_dri},
             }
         )
         if mine:
@@ -399,7 +407,7 @@ async def test_process_application():
             conn_applicant,
         ) = await test_setup_application_handler()
         web_request = build_request_stub(
-            context, match_info={"appliance_uuid": record._id}
+            context, match_info={"appliance_id": record._id}
         )
         await call_endpoint_validate(function, web_request)
 
@@ -408,7 +416,7 @@ async def test_process_application():
 
 
 async def test_add_service_endpoint():
-    context = await build_context()
+    context = await build_context("local")
     consent = await add_consent(context, "asd", {}, "test_consent_dri")
     await call_endpoint_validate(
         add_service_endpoint,
@@ -424,12 +432,11 @@ async def test_add_service_endpoint():
 
 
 async def test_setup_for_apply():
-    context = await build_context()
+    context = await build_context("local")
     consent = await add_consent(context, "asd", {"test_apply": "a"}, "test_consent_dri")
     service = await add_service(context, "test_", "test_apply", consent.dri)
     connect = await add_connection(context)
     services = await service.query_fully_serialized(context)
-
     await cache_requested_services(context, connect._id, json.dumps(services))
     await create_public_did(context)
     return context, connect, service
@@ -444,14 +451,14 @@ async def test_apply():
             context,
             {
                 "user_data": user_data,
-                "service_uuid": service._id,
-                "connection_uuid": connect._id,
+                "service_id": service._id,
+                "connection_id": connect._id,
             },
         ),
     )
     apply_res = json.loads(apply_res.body)
-    assert apply_res["connection_uuid"] == connect._id
-    assert apply_res["service_uuid"] == service._id
+    assert apply_res["connection_id"] == connect._id
+    assert apply_res["service_id"] == service._id
     assert apply_res["service_user_data"] == user_data
 
 
@@ -505,16 +512,16 @@ async def get_services_endpoint(request: web.BaseRequest):
 )
 async def get_service_endpoint(request: web.BaseRequest):
     context = request.app["request_context"]
-    service_uuid = request.match_info["service_uuid"]
+    service_id = request.match_info["service_id"]
 
     try:
         result = await ServiceRecord.retrieve_by_id_fully_serialized(
-            context, service_uuid
+            context, service_id
         )
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up)
 
-    result["service_uuid"] = service_uuid
+    result["service_id"] = service_id
     return web.json_response(result)
 
 
@@ -525,7 +532,7 @@ async def get_service_endpoint(request: web.BaseRequest):
 )
 async def request_services_endpoint(request: web.BaseRequest):
     context = request.app["request_context"]
-    connection_id = request.match_info["connection_uuid"]
+    connection_id = request.match_info["connection_id"]
     outbound_handler = request.app["outbound_message_router"]
 
     try:
@@ -546,16 +553,16 @@ async def request_services_endpoint(request: web.BaseRequest):
 
 services_routes = [
     web.get(
-        "/connections/{connection_uuid}/services",
+        "/connections/{connection_id}/services",
         request_services_endpoint,
         allow_head=False,
     ),
     web.get("/services", get_services_endpoint, allow_head=False),
-    web.get("/services/{service_uuid}", get_service_endpoint, allow_head=False),
+    web.get("/services/{service_id}", get_service_endpoint, allow_head=False),
     web.post("/services/add", add_service_endpoint),
     web.get("/applications/mine", mine_applications_endpoint, allow_head=False),
     web.get("/applications/others", other_applications_endpoint, allow_head=False),
     web.post("/services/apply", apply_endpoint),
-    web.put("/applications/{appliance_uuid}/accept", application_accept_endpoint),
-    web.post("/applications/{appliance_uuid}/reject", application_reject_endpoint),
+    web.put("/applications/{appliance_id}/accept", application_accept_endpoint),
+    web.post("/applications/{appliance_id}/reject", application_reject_endpoint),
 ]

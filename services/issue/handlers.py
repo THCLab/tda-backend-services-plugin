@@ -64,7 +64,6 @@ async def application_handler(context, msg, connection_id):
         LOGGER.error(f"Credential failed the verification process {consent}")
         return ServiceIssueRecord.ISSUE_REJECTED
 
-    print("msg.service_user_data:", msg.service_user_data)
     user_data_dri = await pds_save(
         context, msg.service_user_data, oca_schema_dri=service.service_schema_dri
     )

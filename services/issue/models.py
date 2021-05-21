@@ -48,7 +48,7 @@ class ServiceIssueRecord(BaseRecord):
         # Holder / (cred requester) values
         label: str = None,
         credential_definition_id: str = None,
-        service_consent_schema: ConsentSchema = None,
+        service_consent_schema: dict = None,
         service_schema_dri: str = None,
         service_user_data_dri: str = None,
         service_consent_match_id: str = None,
@@ -65,7 +65,6 @@ class ServiceIssueRecord(BaseRecord):
         self.connection_id = connection_id
         self.author = author
         self.exchange_id = str(uuid.uuid4()) if exchange_id is None else exchange_id
-        # Holder / (cred requester) values
         self.label = label
         self.service_consent_schema = service_consent_schema
         self.service_schema_dri = service_schema_dri
@@ -194,3 +193,5 @@ class ServiceIssueRecordSchema(BaseRecordSchema):
     credential_id = fields.Str(required=False)
     service_user_data_dri = fields.Str(required=False)
     their_public_did = fields.Str(required=False)
+    service_consent_schema = fields.Dict(required=False)
+    credential_definition_id = fields.Str(required=False)
