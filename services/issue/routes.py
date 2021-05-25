@@ -249,7 +249,7 @@ async def _process_application_endpoint(request):
 
 
 @response_schema(Model.Application)
-@match_info_schema(Model.ApplicationsApplianceUuidAcceptInput.Put.Path)
+@match_info_schema(Model.ApplicationsApplianceIdAcceptInput.Put.Path)
 @docs(tags=["Services"])
 async def application_accept_endpoint(request: web.BaseRequest):
     result = await _process_application_endpoint(request)
@@ -257,7 +257,7 @@ async def application_accept_endpoint(request: web.BaseRequest):
 
 
 @response_schema(Model.Application)
-@match_info_schema(Model.ApplicationsApplianceUuidRejectInput.Put.Path)
+@match_info_schema(Model.ApplicationsApplianceIdRejectInput.Put.Path)
 @docs(tags=["Services"])
 async def application_reject_endpoint(request: web.BaseRequest):
     result = await _process_application_endpoint(request)
