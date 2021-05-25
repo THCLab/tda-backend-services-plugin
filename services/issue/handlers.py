@@ -189,7 +189,7 @@ class ApplicationResponseHandler(BaseHandler):
             context, context.message, responder.connection_id
         )
         await responder.send_webhook(
-            "verifiable-services/credential-received",
+            "services/credential-received",
             {
                 "credential_id": credential_id,
                 "connection_id": responder.connection_id,
@@ -218,6 +218,6 @@ class ConfirmationHandler(BaseHandler):
         record_id = await record.save(context, reason="Updated issue state")
 
         await responder.send_webhook(
-            "verifiable-services/issue-state-update",
+            "services/issue-state-update",
             {"state": record.state, "issue_id": record_id, "issue": record.serialize()},
         )

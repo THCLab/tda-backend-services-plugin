@@ -4,7 +4,6 @@ from aries_cloudagent.storage.error import (
 )
 
 from marshmallow import fields, Schema
-from .consents.routes import DefinedConsent
 import logging
 from aries_cloudagent.pdstorage_thcf.api import *
 
@@ -85,9 +84,9 @@ class ServiceRecord(BaseRecord):
         for current in query:
             record = current.record_value
             try:
-                print(record)
-                qu = await DefinedConsent.load(context, record["consent_dri"])
-                record["consent_schema"] = qu.serialize()
+                record["consent_schema"] = await pds_load(
+                    context, record["consent_dri"], with_meta_embed=True
+                )
             except PDSError as err:
                 if skip_invalid:
                     LOGGER.warn(

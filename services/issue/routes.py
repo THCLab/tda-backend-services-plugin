@@ -18,7 +18,7 @@ import json
 from .models import *
 from .message_types import *
 from ..models import *
-from ..consents.routes import ConsentGiven, add_consent
+from ..consents.routes import add_consent
 from ..discovery.message_types import Discovery, DiscoveryServiceSchema
 from aries_cloudagent.pdstorage_thcf.api import *
 from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
@@ -144,10 +144,11 @@ async def apply(context, connection_id, service_id, service_user_data):
         public_did=public_did,
     )
 
-    consent_given = ConsentGiven(
-        credential, connection_id, oca_schema_dri=CONSENT_GIVEN_DRI
+    await pds_save(
+        context,
+        {"connection_id": connection_id, "credential": credential},
+        oca_schema_dri=CONSENT_GIVEN_DRI,
     )
-    await consent_given.save(context)
 
     return request, record
 
@@ -234,14 +235,14 @@ async def _process_application_endpoint(request):
         await outbound_handler(msg, connection_id=issue.connection_id)
 
     service = await ServiceRecord.retrieve_by_id(context, issue.service_id)
-    consent = await DefinedConsent.load(context, service.consent_dri)
+    consent = await pds_load(context, service.consent_dri, with_meta_embed=True)
 
     return web.json_response(
         {
             "connection_id": issue.connection_id,
             "appliance_id": issue._id,
             "service_id": issue.service_id,
-            "consent": consent.serialize(),
+            "consent": consent,
             "service": {"oca_schema_dri": service.service_schema_dri},
         }
     )
@@ -265,7 +266,7 @@ async def application_reject_endpoint(request: web.BaseRequest):
 
 async def add_service(context, label, service_schema_dri, consent_dri):
     try:
-        await DefinedConsent.load(context, consent_dri)
+        await pds_load(context, consent_dri)
     except PDSError as err:
         return web.json_response(status=404, text="Consent not found - " + err.roll_up)
 
@@ -297,9 +298,10 @@ async def create_public_did(context):
 async def add_service_endpoint(request: web.BaseRequest):
     ctx = request.app["request_context"]
     body = await request.json()
-    consent_id = body.get("consent_dri")
+    if __debug__:
+        assert body.get("consent_dri") != ""
     service = await add_service(
-        ctx, body["label"], body["service_schema_dri"], consent_id
+        ctx, body["label"], body["service_schema_dri"], body.get("consent_dri")
     )
 
     result = service.serialize()
@@ -423,7 +425,7 @@ async def test_add_service_endpoint():
         build_request_stub(
             context,
             {
-                "consent_dri": consent.dri,
+                "consent_dri": consent["dri"],
                 "label": "TestService",
                 "service_schema_dri": "12345",
             },
@@ -434,7 +436,7 @@ async def test_add_service_endpoint():
 async def test_setup_for_apply():
     context = await build_context("local")
     consent = await add_consent(context, "asd", {"test_apply": "a"}, "test_consent_dri")
-    service = await add_service(context, "test_", "test_apply", consent.dri)
+    service = await add_service(context, "test_", "test_apply", consent["dri"])
     connect = await add_connection(context)
     services = await service.query_fully_serialized(context)
     await cache_requested_services(context, connect._id, json.dumps(services))

@@ -1,5 +1,4 @@
 from aiohttp import web
-from aiohttp.web_request import BaseRequest
 from aiohttp_apispec import docs, request_schema
 from aries_cloudagent.aathcf.utils import (
     build_context,
@@ -7,39 +6,27 @@ from aries_cloudagent.aathcf.utils import (
     build_request_stub,
 )
 from aries_cloudagent.pdstorage_thcf.api import (
-    OCARecord,
     pds_get_usage_policy_if_active_pds_supports_it,
+    pds_load,
     pds_query_model_by_oca_schema_dri,
     PDSError,
+    pds_save,
 )
 import aries_cloudagent.generated_models as Model
 import logging
 
-from marshmallow.fields import Constant
 
 LOGGER = logging.getLogger(__name__)
 
 
-class DefinedConsent(OCARecord):
-    def __init__(self, label, usage_policy, oca_data, *, oca_schema_dri=None, dri=None):
-        self.label = label
-        self.usage_policy = usage_policy
-        self.oca_data = oca_data
-        super().__init__(oca_schema_dri, dri)
-
-
-class ConsentGiven(OCARecord):
-    def __init__(self, credential, connection_id, *, oca_schema_dri=None, dri=None):
-        self.credential = credential
-        self.connection_id = connection_id
-        super().__init__(oca_schema_dri, dri)
-
-
 async def add_consent(context, label, oca_data, oca_schema_dri):
+    model = {"label": label, "oca_data": oca_data}
     pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
-    m = DefinedConsent(label, pds_usage_policy, oca_data, oca_schema_dri=oca_schema_dri)
-    dri = await m.save(context)
-    record = await m.load(context, dri)
+    if pds_usage_policy:
+        model.update({"usage_policy": pds_usage_policy})
+    dri = await pds_save(context, model, oca_schema_dri=oca_schema_dri)
+    record = await pds_load(context, dri, with_meta_embed=True)
+    record["dri"] = dri
     return record
 
 
@@ -63,7 +50,6 @@ async def post_consent_api(request: web.BaseRequest):
     result = await add_consent(
         context, body["label"], body["oca_data"], body["oca_schema_dri"]
     )
-    result = result.__dict__.copy()
     result.pop("usage_policy", None)
 
     return web.json_response(result)
@@ -132,21 +118,6 @@ async def test_consent():
 
     result = await post_consent_api(request)
     print(result.body)
-
-    # result = await add_consent(
-    #     context, consent["label"], consent["oca_data"], consent["oca_schema_dri"]
-    # )
-    # print(result)
-
-    # result = await retrieve_from_pds(context, consent["oca_schema_dri"])
-    # print(len(result))
-
-    # consent_given = ConsentGiven(
-    #     "asatg3tr3", "asda452", oca_schema_dri="test_oca_schema_dri"
-    # )
-    # dri = await consent_given.save(context)
-    # result = await consent_given.load(context, dri)
-    # print(result.__dict__)
 
 
 run_standalone_async(__name__, test_consent)
