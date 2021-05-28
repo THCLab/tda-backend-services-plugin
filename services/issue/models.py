@@ -1,18 +1,14 @@
-from aiohttp import web
 from aries_cloudagent.messaging.models.base_record import BaseRecord, BaseRecordSchema
-from aries_cloudagent.storage.base import BaseStorage
 from aries_cloudagent.config.injection_context import InjectionContext
-from aries_cloudagent.storage.error import StorageDuplicateError
-from aries_cloudagent.messaging.util import datetime_to_str, time_now
 
 import hashlib
-from marshmallow import fields, Schema
-from typing import Mapping, Any, overload
+from marshmallow import fields
+from typing import Mapping, Any
 import uuid
 import json
 from aries_cloudagent.pdstorage_thcf.api import *
 
-from ..models import ConsentSchema, ServiceSchema
+import aries_cloudagent.config.global_variables as globals
 
 
 class ServiceIssueRecord(BaseRecord):
@@ -157,7 +153,9 @@ class ServiceIssueRecord(BaseRecord):
     async def issuer_credential_pds_set(self, context, credential):
         if isinstance(credential, str):
             credential = json.loads(credential)
-        self.credential_id = await pds_save(context, credential)
+        self.credential_id = await pds_save(
+            context, credential, globals.CREDENTIALS_GIVEN_DRI
+        )
 
     async def issuer_credential_pds_get(self, context):
         if self.credential_id is None:
@@ -168,7 +166,9 @@ class ServiceIssueRecord(BaseRecord):
     async def user_consent_credential_pds_set(self, context, credential):
         if isinstance(credential, str):
             credential = json.loads(credential)
-        self.user_consent_credential_dri = await pds_save(context, credential)
+        self.user_consent_credential_dri = await pds_save(
+            context, credential, globals.CONSENT_FROM_APPLICANT_DRI
+        )
 
     async def user_consent_credential_pds_get(self, context):
         if self.user_consent_credential_dri is None:

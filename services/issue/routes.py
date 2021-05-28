@@ -32,7 +32,7 @@ from aries_cloudagent.aathcf.utils import (
     validate_endpoint_output,
     call_endpoint_validate,
 )
-from aries_cloudagent.config.global_variables import CONSENT_GIVEN_DRI
+import aries_cloudagent.config.global_variables as globals
 
 
 LOGGER = logging.getLogger(__name__)
@@ -147,7 +147,7 @@ async def apply(context, connection_id, service_id, service_user_data):
     await pds_save(
         context,
         {"connection_id": connection_id, "credential": credential},
-        oca_schema_dri=CONSENT_GIVEN_DRI,
+        oca_schema_dri=globals.CONSENT_GIVEN_DRI,
     )
 
     return request, record

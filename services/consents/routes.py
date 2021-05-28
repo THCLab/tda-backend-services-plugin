@@ -2,6 +2,7 @@ from aiohttp import web
 from aiohttp_apispec import docs, request_schema
 from aiohttp_apispec.decorators.response import response_schema
 from aries_cloudagent.aathcf.credentials import validate_schema
+import aries_cloudagent.config.global_variables as globals
 from aries_cloudagent.aathcf.utils import (
     build_context,
     run_standalone_async,
@@ -31,7 +32,7 @@ class PDSConsent(Schema):
     usage_policy = fields.Str(required=False)
 
 
-async def add_consent(context, label, oca_data, oca_schema_dri):
+async def add_consent(context, label, oca_data):
     model = {"label": label, "oca_data": oca_data}
     pds_usage_policy = await pds_get_usage_policy_if_active_pds_supports_it(context)
     if pds_usage_policy:
@@ -39,7 +40,7 @@ async def add_consent(context, label, oca_data, oca_schema_dri):
     errors = validate_schema(PDSConsent, model)
     if errors:
         raise PDSError(errors)
-    dri = await pds_save(context, model, oca_schema_dri=oca_schema_dri)
+    dri = await pds_save(context, model, oca_schema_dri=globals.CONSENT_DRI)
     model = await pds_load(context, dri, with_meta_embed=True)
     model["dri"] = dri
     return model
@@ -49,10 +50,10 @@ async def get_consent(context, id):
     try:
         record = await pds_load(context, id)
     except PDSRecordNotFoundError:
-        return None
+        raise web.HTTPNotFound(reason="record not found")
     errors = validate_schema(PDSConsent, record)
     if errors:
-        raise web.HTTPUnprocessableEntity(errors)
+        raise web.HTTPUnprocessableEntity(reason=errors)
     return record
 
 
@@ -72,9 +73,7 @@ async def retrieve_from_pds(context, oca_schema_dri):
 async def post_consent_route(request: web.BaseRequest):
     context = request.app["request_context"]
     body = await request.json()
-    result = await add_consent(
-        context, body["label"], body["oca_data"], body["oca_schema_dri"]
-    )
+    result = await add_consent(context, body["label"], body["oca_data"])
 
     result.pop("usage_policy", None)
 
@@ -83,11 +82,10 @@ async def post_consent_route(request: web.BaseRequest):
 
 @docs(tags=["Consents"], summary="Get all consent definitions")
 async def get_consents_route(request: web.BaseRequest):
-    consent_oca_schema_dri = "consent_dri"
     context = request.app["request_context"]
-    result = await retrieve_from_pds(context, consent_oca_schema_dri)
+    result = await retrieve_from_pds(context, globals.CONSENT_DRI)
     for i in result:
-        i["oca_schema_dri"] = consent_oca_schema_dri
+        i["oca_schema_dri"] = globals.CONSENT_DRI
     return web.json_response(result)
 
 
@@ -106,10 +104,11 @@ async def get_consents_by_id_route(request: web.BaseRequest):
 @response_schema(Model.ArrayOfDocuments)
 async def get_consents_given_route(request: web.BaseRequest):
     context = request.app["request_context"]
-    result = await retrieve_from_pds(context, "consent_given")
+    result = await retrieve_from_pds(context, globals.CONSENT_GIVEN_DRI)
     return web.json_response(result)
 
 
+# TODO: WHAT IS CONSENT MINE???
 @docs(
     tags=["Documents"],
     summary="Get all my consent credentials",
@@ -117,7 +116,7 @@ async def get_consents_given_route(request: web.BaseRequest):
 @response_schema(Model.ArrayOfDocuments)
 async def get_consents_mine_route(request: web.BaseRequest):
     context = request.app["request_context"]
-    result = await retrieve_from_pds(context, "consent_mine")
+    result = await retrieve_from_pds(context, globals.CONSENT_MINE_DRI)
     return web.json_response(result)
 
 
@@ -140,8 +139,11 @@ consent_routes = [
 
 async def test_get_consent_by_id():
     context = await build_context()
-    consent = await get_consent(context, "1234")
-    assert consent == None
+    try:
+        consent = await get_consent(context, "1234")
+        assert not "invalid codepath"
+    except web.HTTPNotFound:
+        print("Success: not found")
 
 
 async def test_consent():
