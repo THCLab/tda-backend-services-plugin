@@ -1,10 +1,12 @@
 from aiohttp import web
 from aiohttp_apispec import docs, request_schema
+from aiohttp_apispec.decorators import response
 from aiohttp_apispec.decorators.response import response_schema
 from aries_cloudagent.aathcf.credentials import validate_schema
 import aries_cloudagent.config.global_variables as globals
 from aries_cloudagent.aathcf.utils import (
     build_context,
+    call_endpoint_validate,
     run_standalone_async,
     build_request_stub,
 )
@@ -30,6 +32,7 @@ class PDSConsent(Schema):
     oca_data = fields.Dict(required=True)
     oca_schema_dri = fields.Str(required=False)
     usage_policy = fields.Str(required=False)
+    dri = fields.Str(required=False)
 
 
 async def add_consent(context, label, oca_data):
@@ -41,14 +44,14 @@ async def add_consent(context, label, oca_data):
     if errors:
         raise PDSError(errors)
     dri = await pds_save(context, model, oca_schema_dri=globals.CONSENT_DRI)
-    model = await pds_load(context, dri, with_meta_embed=True)
+    model["oca_schema_dri"] = globals.CONSENT_DRI
     model["dri"] = dri
     return model
 
 
 async def get_consent(context, id):
     try:
-        record = await pds_load(context, id)
+        record = await pds_load(context, id, with_meta_embed=True)
     except PDSRecordNotFoundError:
         raise web.HTTPNotFound(reason="record not found")
     errors = validate_schema(PDSConsent, record)
@@ -66,6 +69,7 @@ async def retrieve_from_pds(context, oca_schema_dri):
 
 
 @request_schema(Model.Consent)
+@response_schema(Model.Consent)
 @docs(
     tags=["Consents"],
     summary="Add consent definition",
@@ -80,15 +84,19 @@ async def post_consent_route(request: web.BaseRequest):
     return web.json_response(result)
 
 
+@response_schema(Model.ArrayOfConsents)
 @docs(tags=["Consents"], summary="Get all consent definitions")
 async def get_consents_route(request: web.BaseRequest):
     context = request.app["request_context"]
-    result = await retrieve_from_pds(context, globals.CONSENT_DRI)
-    for i in result:
-        i["oca_schema_dri"] = globals.CONSENT_DRI
+    records = await retrieve_from_pds(context, globals.CONSENT_DRI)
+    result = []
+    for i in records[0]["payload"]:
+        i["content"]["oca_schema_dri"] = globals.CONSENT_DRI
+        result.append(i["content"])
     return web.json_response(result)
 
 
+@response_schema(Model.Consent)
 @docs(tags=["Consents"], summary="Get consent by ID")
 async def get_consents_by_id_route(request: web.BaseRequest):
     context = request.app["request_context"]
@@ -161,13 +169,27 @@ async def test_consent():
         },
     )
 
-    result = await post_consent_route(request)
-    print(result.body)
+    import json
+
+    result = await call_endpoint_validate(post_consent_route, request)
+    result = json.loads(result.body)
+    await call_endpoint_validate(
+        get_consents_by_id_route,
+        build_request_stub(context, match_info={"consent_id": result["dri"]}),
+    )
+
+
+async def test_get_consents():
+    context = await build_context()
+    result = await retrieve_from_pds(context, globals.CONSENT_DRI)
+    assert len(result) > 0
+    await call_endpoint_validate(get_consents_route, build_request_stub(context))
 
 
 async def tests():
     await test_consent()
     await test_get_consent_by_id()
+    await test_get_consents()
 
 
 run_standalone_async(__name__, tests)
