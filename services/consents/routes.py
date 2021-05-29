@@ -124,7 +124,7 @@ async def get_consents_given_route(request: web.BaseRequest):
 @response_schema(Model.ArrayOfDocuments)
 async def get_consents_mine_route(request: web.BaseRequest):
     context = request.app["request_context"]
-    result = await retrieve_from_pds(context, globals.CONSENT_MINE_DRI)
+    result = await retrieve_from_pds(context, globals.CONSENT_FROM_APPLICANT_DRI)
     return web.json_response(result)
 
 
