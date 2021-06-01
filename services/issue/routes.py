@@ -482,6 +482,9 @@ async def test_get_service_issues():
 
 async def test_request_presentation():
     import aries_cloudagent.protocols.present_proof.v1_1.routes as present
+    from aries_cloudagent.protocols.present_proof.v1_1.handlers.request_proof import (
+        handle_proof_request,
+    )
     from aries_cloudagent.holder.routes import documents_mine_get
 
     (
@@ -510,7 +513,12 @@ async def test_request_presentation():
             {"oca_schema_dri": oca_schema_dri, "connection_id": conn_applicant._id},
         ),
     )
-    print(result.body)
+
+    message, exchange_record = await present.request_presentation(
+        context, conn_applicant._id, oca_schema_dri
+    )
+    record_id = await handle_proof_request(context, conn_applicant._id, message)
+    print(record_id)
 
 
 async def main():
