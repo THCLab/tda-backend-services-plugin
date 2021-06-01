@@ -1,3 +1,4 @@
+from aries_cloudagent.holder.routes import documents_given_get
 from ..issue.handlers import application_handler, application_response_handler
 from aiohttp_apispec.decorators import response
 from ..discovery.handlers import cache_requested_services
@@ -27,8 +28,10 @@ from aries_cloudagent.protocols.issue_credential.v1_1.utils import (
 from ..util import *
 import aries_cloudagent.generated_models as Model
 from aries_cloudagent.aathcf.utils import (
+    add_connection,
     build_context,
     build_request_stub,
+    create_public_did,
     validate_endpoint_output,
     call_endpoint_validate,
 )
@@ -280,18 +283,6 @@ async def add_service(context, label, service_schema_dri, consent_dri):
     return service_record
 
 
-async def add_connection(context):
-    result = ConnectionRecord()
-    result.state = result.STATE_ACTIVE
-    await result.save(context)
-    return result
-
-
-async def create_public_did(context):
-    wallet: BaseWallet = await context.inject(BaseWallet)
-    await wallet.create_public_did()
-
-
 @docs(tags=["Services"], summary="Add a verifiable service")
 @request_schema(Model.BaseService)
 @response_schema(Model.Service, code=201)
@@ -380,24 +371,30 @@ async def mine_applications_endpoint(request: web.BaseRequest):
     return web.json_response(result)
 
 
-async def test_setup_application_handler():
+async def test_setup_application_handler(pds="local"):
     import random
 
-    context, conn_applicant, service = await test_setup_for_apply()
+    context, conn_applicant, service = await test_setup_for_apply(pds)
     conn_service_provider = await add_connection(context)
     user_data = {"user_data": "cool_data" + str(random.randint(0, 11111))}
     message, record = await apply(context, conn_applicant._id, service._id, user_data)
     request, record = await application_handler(
         context, message, conn_service_provider._id
     )
-    return context, request, record, conn_applicant
+    return context, request, record, conn_applicant, conn_service_provider
 
 
-async def test_full_process():
-    context, request, record, conn_applicant = await test_setup_application_handler()
+async def test_full_process(pds="local"):
+    (
+        context,
+        request,
+        record,
+        conn_applicant,
+        conn_service_provider,
+    ) = await test_setup_application_handler(pds)
     err, msg, record = await process_application(context, record._id, True)
     resp = await application_response_handler(context, msg, conn_applicant._id)
-    return context
+    return context, request, record, conn_applicant, conn_service_provider
 
 
 async def test_process_application():
@@ -407,6 +404,7 @@ async def test_process_application():
             request,
             record,
             conn_applicant,
+            conn_service_provider,
         ) = await test_setup_application_handler()
         web_request = build_request_stub(
             context, match_info={"appliance_id": record._id}
@@ -419,7 +417,7 @@ async def test_process_application():
 
 async def test_add_service_endpoint():
     context = await build_context("local")
-    consent = await add_consent(context, "asd", {}, "test_consent_dri")
+    consent = await add_consent(context, "asd", {})
     await call_endpoint_validate(
         add_service_endpoint,
         build_request_stub(
@@ -433,9 +431,9 @@ async def test_add_service_endpoint():
     )
 
 
-async def test_setup_for_apply():
-    context = await build_context("local")
-    consent = await add_consent(context, "asd", {"test_apply": "a"}, "test_consent_dri")
+async def test_setup_for_apply(pds="local"):
+    context = await build_context(pds)
+    consent = await add_consent(context, "asd", {"test_apply": "a"})
     service = await add_service(context, "test_", "test_apply", consent["dri"])
     connect = await add_connection(context)
     services = await service.query_fully_serialized(context)
@@ -482,12 +480,35 @@ async def test_get_service_issues():
     )
 
 
+async def test_request_presentation():
+    import aries_cloudagent.protocols.present_proof.v1_1.routes as present
+    from aries_cloudagent.holder.routes import documents_mine_get
+
+    (
+        context,
+        request,
+        record,
+        conn_applicant,
+        conn_service_provider,
+    ) = await test_full_process("own_your_data_data_vault")
+
+    documents = await documents_mine_get(context)
+    print(documents)
+    await call_endpoint_validate(
+        present.request_presentation_route,
+        build_request_stub(
+            context, {"oca_schema_dri": "123", "connection_id": conn_applicant._id}
+        ),
+    )
+
+
 async def main():
     await test_apply()
     await test_add_service_endpoint()
     await test_process_application()
     await test_full_process()
     await test_get_service_issues()
+    await test_request_presentation()
 
 
 run_standalone_async(__name__, main)
