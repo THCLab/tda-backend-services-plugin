@@ -491,15 +491,26 @@ async def test_request_presentation():
         conn_applicant,
         conn_service_provider,
     ) = await test_full_process("own_your_data_data_vault")
-
+    # result = await pds_load(
+    #     context, "zQmePJdMBUWbuBM3UUULoEw9b7hRrjutcRvVxBnRKBTzMoA", with_meta_embed=True
+    # )
+    # print(result)
     documents = await documents_mine_get(context)
-    print(documents)
-    await call_endpoint_validate(
+    oca_schema_dri = None
+    for i in documents:
+        osdri = i["content"]["credentialSubject"].get("oca_schema_dri")
+        if osdri:
+            oca_schema_dri = osdri
+            break
+
+    result = await call_endpoint_validate(
         present.request_presentation_route,
         build_request_stub(
-            context, {"oca_schema_dri": "123", "connection_id": conn_applicant._id}
+            context,
+            {"oca_schema_dri": oca_schema_dri, "connection_id": conn_applicant._id},
         ),
     )
+    print(result.body)
 
 
 async def main():
