@@ -1,4 +1,3 @@
-from aries_cloudagent.holder.routes import documents_given_get
 from ..issue.handlers import application_handler, application_response_handler
 from aiohttp_apispec.decorators import response
 from ..discovery.handlers import cache_requested_services
@@ -485,6 +484,9 @@ async def test_request_presentation():
     from aries_cloudagent.protocols.present_proof.v1_1.handlers.request_proof import (
         handle_proof_request,
     )
+    from aries_cloudagent.protocols.present_proof.v1_1.handlers.present_proof import (
+        handle_proof_presentation,
+    )
     from aries_cloudagent.holder.routes import documents_mine_get
 
     (
@@ -492,12 +494,8 @@ async def test_request_presentation():
         request,
         record,
         conn_applicant,
-        conn_service_provider,
+        conn_officer,
     ) = await test_full_process("own_your_data_data_vault")
-    # result = await pds_load(
-    #     context, "zQmePJdMBUWbuBM3UUULoEw9b7hRrjutcRvVxBnRKBTzMoA", with_meta_embed=True
-    # )
-    # print(result)
     documents = await documents_mine_get(context)
     oca_schema_dri = None
     dri = None
@@ -516,14 +514,33 @@ async def test_request_presentation():
         ),
     )
 
+    # Agent 1 Offices requests presentation from applicant
     message, exchange_record = await present.request_presentation(
         context, conn_applicant._id, oca_schema_dri
     )
-    record_id = await handle_proof_request(context, conn_applicant._id, message)
+    # Agent 2 handles the proof request from officer (saves it)
+    record_id = await handle_proof_request(context, conn_officer._id, message)
+
+    # Agent 2 responds with presentation and saves it
     pmessage, ppresentation, pexchange = await present.present_proof(
         context, record_id, dri
     )
-    print(pmessage)
+    await present.present_proof_save(context, pexchange, ppresentation)
+
+    # Agent 1 officer handles the presentation
+    exchange = await handle_proof_presentation(
+        context,
+        conn_applicant._id,
+        pmessage._thread_id,
+        ppresentation,
+        pmessage.prover_public_did,
+    )
+
+    # Agent 1 officer accepts or rejects the presentation
+    ppmessage, ppexchange = await present.process_presentation(
+        context, exchange._id, True
+    )
+    print(ppmessage, ppexchange)
 
 
 async def main():
