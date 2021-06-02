@@ -500,10 +500,12 @@ async def test_request_presentation():
     # print(result)
     documents = await documents_mine_get(context)
     oca_schema_dri = None
+    dri = None
     for i in documents:
         osdri = i["content"]["credentialSubject"].get("oca_schema_dri")
         if osdri:
             oca_schema_dri = osdri
+            dri = i["dri"]
             break
 
     result = await call_endpoint_validate(
@@ -518,15 +520,18 @@ async def test_request_presentation():
         context, conn_applicant._id, oca_schema_dri
     )
     record_id = await handle_proof_request(context, conn_applicant._id, message)
-    print(record_id)
+    pmessage, ppresentation, pexchange = await present.present_proof(
+        context, record_id, dri
+    )
+    print(pmessage)
 
 
 async def main():
-    await test_apply()
-    await test_add_service_endpoint()
-    await test_process_application()
-    await test_full_process()
-    await test_get_service_issues()
+    # await test_apply()
+    # await test_add_service_endpoint()
+    # await test_process_application()
+    # await test_full_process()
+    # await test_get_service_issues()
     await test_request_presentation()
 
 
